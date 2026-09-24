@@ -3,3 +3,5 @@ balorasi.docx
 __pycache__/
 *.pyc
 icons-preview/
+.vercel
+.venv/

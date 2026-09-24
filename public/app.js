@@ -118,9 +118,8 @@ let identityTimer = 0;
 let identitySeq = 0;
 
 function apiUrl(path) {
-  const localApp =
-    (location.hostname === "127.0.0.1" || location.hostname === "localhost") && location.port === "4173";
-  return localApp ? path : `${APP_ORIGIN}${path}`;
+  if (location.protocol === "file:") return `${APP_ORIGIN}${path}`;
+  return path;
 }
 
 async function api(path, options = {}) {
