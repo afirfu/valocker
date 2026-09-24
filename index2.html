@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valorant Skin Locker</title>
+    <style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #1a1a1a, #0f9b0f);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    line-height: 1.6;
+}
+
+.container h1 {
+    font-size: 2.5em;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+.description {
+    margin-top: 50px;
+    font-size: 1.2em;
+    line-height: 1.5;
+    text-align: center;
+    max-width: 800px;
+    margin-bottom: 30px;
+}
+
+select {
+    background-color: #333;
+    color: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #1a1a1a;
+    font-size: 1em;
+    font-family: Arial, sans-serif;
+    transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+select:hover {
+    background-color: #0f9b0f;
+    transform: scale(1.05);
+}
+
+select:focus {
+    outline: none;
+    border-color: #0f9b0f;
+    background-color: #0f9b0f;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background-color: #222;
+}
+
+th, td {
+    border: 1px solid #fff;
+    padding: 12px;
+    text-align: center;
+    font-size: 1.1em;
+}
+
+th {
+    background-color: #0f9b0f;
+    color: #1a1a1a;
+    font-weight: bold;
+}
+
+tr:nth-child(even) {
+    background-color: #333;
+}
+
+tr:hover {
+    background-color: #444;
+    cursor: pointer;
+}
+button {
+    background-color: #0f9b0f;
+    color: #fff;
+    border: none;
+    padding: 12px 25px;
+    font-size: 1.1em;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #0d7a0d;
+}
+.container {
+    width: 90%;
+    max-width: 1200px;
+    text-align: center;
+    margin-bottom: 50px; /* Extra bottom space */
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+.description {
+    margin-top: 50px;
+    font-size: 1.2em;
+    line-height: 1.5;
+    text-align: center;
+    max-width: 800px;
+    margin-bottom: 30px;
+}
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Valorant Skin Locker</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rarity</th>
+                    <th>Guns</th>
+                    <th>Ultra/Exclusive</th>
+                    <th>Premium (with Finisher)</th>
+                    <th>Premium (no Finisher)</th>
+                    <th>Select/Deluxe</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rifles -->
+                <tr>
+                    <td class="rarity" rowspan="4">Rifles</td>
+                    <td>Vandal</td>
+                    <td>
+				<select>
+					<option value="Choose skin">Choose skin</option>
+					<option value="Araxxis">Araxxis</option>
+            				<option value="Arcane">Arcane</option>
+            				<option value="Champion 2021">Champion 2021</option>
+            				<option value="Champion 2023">Champion 2023</option>
+            				<option value="Chronovoid">Chronovoid</option>
+            				<option value="Elderflame">Elderflame</option>
+            				<option value="Evori Dreamwings">Evori Dreamwings</option>
+            				<option value="Glitchpop">Glitchpop</option>
+            				<option value="Imperium">Imperium</option>
+            				<option value="Kuronami">Kuronami</option>
+            				<option value="Overdrive">Overdrive</option>
+            				<option value="Prelude to Chaos">Prelude to Chaos</option>
+            				<option value="Primordium">Primordium</option>
+            				<option value="RGX 11Z Pro">RGX 11Z Pro</option>
+            				<option value="Sentinels of Light">Sentinels of Light</option>
+            				<option value="Singularity">Singularity</option>
+				</select>
+		    </td>
+                    <td>
+				<select>
+					<option value="">Choose Skin</option>
+            				<option value="Aemondir">Aemondir</option>
+            				<option value="Cryostasis">Cryostasis</option>
+            				<option value="Forsaken">Forsaken</option>
+            				<option value="Gaia's Vengeance">Gaia's Vengeance</option>
+            				<option value="Ion">Ion</option>
+            				<option value="Magepunk">Magepunk</option>
+            				<option value="Oni">Oni</option>
+            				<option value="Origin">Origin</option>
+            				<option value="Prime">Prime</option>
+            				<option value="Reaver">Reaver</option>
+            				<option value="Valiant Hero">Valiant Hero</option>
+            				<option value="Xerofang">Xerofang</option>
+				</select></td>
+                    <td>
+				<select>
+					<option value="">Choose Skin</option>
+            				<option value="Black.Market">Black.Market</option>
+            				<option value="Crimsonbeast">Crimsonbeast</option>
+            				<option value="Ego">Ego</option>
+            				<option value="Neptune">Neptune</option>
+            				<option value="Tethered Realms">Tethered Realms</option>
+            				<option value="Valorant Go! Vol 2">Valorant Go! Vol 2</option>
+				</select>
+		    </td>
+                    <td>
+				<select>
+					<option value="">Choose Skin</option>
+            				<option value="Cavalier">Cavalier</option>
+            				<option value="Depths">Depths</option>
+            				<option value="K/TAC">K/TAC</option>
+            				<option value="Nitro">Nitro</option>
+            				<option value=".EXE">.EXE</option>
+            				<option value=".SYS">.SYS</option>
+            				<option value="Altitude">Altitude</option>
+            				<option value="Aristocrat">Aristocrat</option>
+            				<option value="Avalanche">Avalanche</option>
+            				<option value="Bubble Pop">Bubble Pop</option>
+            				<option value="Comet">Comet</option>
+            				<option value="Endeavor">Endeavor</option>
+            				<option value="Guardrail">Guardrail</option>
+            				<option value="Hivemind">Hivemind</option>
+            				<option value="Holomoku">Holomoku</option>
+            				<option value="Horizon">Horizon</option>
+            				<option value="Immortalized">Immortalized</option>
+            				<option value="Luna">Luna</option>
+            				<option value="Luxe">Luxe</option>
+            				<option value="Lycan's Bane">Lycan's Bane</option>
+            				<option value="MK.VII">MK.VII</option>
+            				<option value="Monstrocity">Monstrocity</option>
+            				<option value="No limits">No limits</option>
+            				<option value="Nunca Alvidados">Nunca Alvidados</option>
+            				<option value="Orion">Orion</option>
+            				<option value="Prism II">Prism II</option>
+            				<option value="Ruin">Ruin</option>
+            				<option value="Sakura">Sakura</option>
+            				<option value="Sandswept">Sandswept</option>
+            				<option value="Sarmad">Sarmad</option>
+            				<option value="Schema">Schema</option>
+            				<option value="Sensation">Sensation</option>
+            				<option value="Silvanus">Silvanus</option>
+            				<option value="Starlit Odyssey">Starlit Odyssey</option>
+            				<option value="Team Ace">Team Ace</option>
+            				<option value="Titanmail">Titanmail</option>
+            				<option value="Torque">Torque</option>
+            				<option value="Transition">Transition</option>
+            				<option value="Venturi">Venturi</option>
+            				<option value="Wasteland">Wasteland</option>
+            				<option value="Winterwunderland">Winterwunderland</option>
+            				<option value="Wonderstallion">Wonderstallion</option>
+				</select>
+		    </td>
+                </tr>
+                <tr>
+                    <td>Phantom</td>
+                    <td>
+			<select>
+				<option value="">Choose Skin</option>
+            			<option value="Araxys">Araxys</option>
+            			<option value="BlastX">BlastX</option>
+            			<option value="Champion 2022">Champion 2022</option>
+            			<option value="Champion 2024">Champion 2024</option>
+            			<option value="Chronovoid">Chronovoid</option>
+            			<option value="Doombringer">Doombringer</option>
+            			<option value="Glitchpop">Glitchpop</option>
+            			<option value="Mystbloom">Mystbloom</option>
+            			<option value="Neo Frontier">Neo Frontier</option>
+            			<option value="Nocturnum">Nocturnum</option>
+            			<option value="Primordium">Primordium</option>
+            			<option value="Protocol 781-A">Protocol 781-A</option>
+            			<option value="Radiant Ent. System">Radiant Ent. System</option>
+            			<option value="RGX 11Z Pro">RGX 11Z Pro</option>
+            			<option value="Ruination">Ruination</option>
+            			<option value="Sentinels of Light">Sentinels of Light</option>
+            			<option value="Singularity">Singularity</option>
+            			<option value="Spectrum">Spectrum</option>
+			</select>
+		    </td>
+                    <td>
+			<select>
+				<option value="">Choose Skin</option>
+            			<option value="Gaia's Vengeance">Gaia's Vengeance</option>
+            			<option value="Ion">Ion</option>
+            			<option value="Magepunk">Magepunk</option>
+            			<option value="Oni">Oni</option>
+            			<option value="Prime 2.0">Prime 2.0</option>
+            			<option value="Radiant Crisis 001">Radiant Crisis 001</option>
+            			<option value="Reaver">Reaver</option>
+            			<option value="Sovereign">Sovereign</option>
+			</select>
+		    </td>
+                    <td>
+			<select>
+				<option>a</option><option>b</option><option>c</option><option>d</option>
+			</select>
+		    </td>
+                    <td>
+			<select>
+				<option>a</option><option>b</option><option>c</option><option>d</option>
+			</select>
+		    </td>
+                </tr>
+                <tr>
+                    <td>Bulldog</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Guardian</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- SMGs -->
+                <tr>
+                    <td class="rarity" rowspan="2">SMGs</td>
+                    <td>Stinger</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Spectre</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- Sniper Rifles -->
+                <tr>
+                    <td class="rarity" rowspan="2">Sniper Rifles</td>
+                    <td>Operator</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Marshall</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- Sidearms -->
+                <tr>
+                    <td class="rarity" rowspan="5">Sidearms</td>
+                    <td>Classic</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Shorty</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Frenzy</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Ghost</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Sheriff</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- Machine Guns -->
+                <tr>
+                    <td class="rarity" rowspan="2">Machine Guns</td>
+                    <td>Odin</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Ares</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- Shotguns -->
+                <tr>
+                    <td class="rarity" rowspan="2">Shotguns</td>
+                    <td>Judge</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <tr>
+                    <td>Bucky</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+                <!-- Knives -->
+                <tr>
+                    <td class="rarity">Knife</td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                    <td><select><option>a</option><option>b</option><option>c</option><option>d</option></select></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="description">
+        This website serves the purpose of saving your desired skins while also allowing you to explore other users' collections or their desired collections. 
+        Discover and curate your unique selection with ease.
+    </div>
+</body>
+</html>
