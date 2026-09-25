@@ -39,7 +39,10 @@
             --table-fg: #fff;
             --skin-color: #0f9b0f;
             --skin-color-down: #0d7a0d;
+            --skin-x: #0d7a0d;
             --skin-on-fg: #fff;
+            --meta-gap: 1em;
+            --meta-control-h: 2.09rem;
             --gun-icon: brightness(0) invert(1);
             --meta-bg: #222;
             --meta-fg: #fff;
@@ -50,8 +53,10 @@
             --page-bg: #121212;
             --page-fg: #fff;
             --link: #c8c8c8;
-            --skin-color: #b4b4b4;
-            --skin-color-down: #8a8a8a;
+            --skin-color: #fff;
+            --skin-color-down: #d0d0d0;
+            --skin-x: #8a8a8a;
+            --skin-on-fg: #111;
         }
 
         html[data-theme="light"] {
@@ -67,6 +72,7 @@
             --table-fg: #111;
             --skin-color: #111;
             --skin-color-down: #333;
+            --skin-x: #9a9a9a;
             --gun-icon: brightness(0);
             --meta-bg: #fff;
             --meta-fg: #111;
@@ -128,9 +134,10 @@
         }
 
         .theme-switch {
+            position: relative;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 8px;
         }
 
         .theme-swatch {
@@ -142,8 +149,28 @@
             cursor: pointer;
         }
 
-        .theme-swatch.is-on {
+        .theme-current {
             border-color: var(--page-fg);
+        }
+
+        .theme-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            z-index: 70;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            transform: translateX(-50%);
+        }
+
+        .theme-menu[hidden] {
+            display: none !important;
+        }
+
+        .theme-menu .theme-swatch.is-on {
+            display: none;
         }
 
         .theme-swatch-green {
@@ -183,7 +210,7 @@
             display: flex;
             align-items: flex-end;
             justify-content: space-between;
-            gap: 16px 24px;
+            gap: var(--meta-gap);
             width: 100%;
             text-align: left;
         }
@@ -200,7 +227,7 @@
         .table-meta-tools {
             display: flex;
             align-items: flex-end;
-            gap: 1em;
+            gap: var(--meta-gap);
             width: auto;
             flex: 0 0 auto;
             min-width: 0;
@@ -226,8 +253,9 @@
         .search-wrap {
             position: relative;
             display: block;
+            box-sizing: border-box;
             width: 100%;
-            height: 2.2em;
+            height: var(--meta-control-h);
         }
 
         .search-wrap input {
@@ -294,6 +322,7 @@
         .table-meta input,
         .table-meta select {
             margin: 0;
+            box-sizing: border-box;
             background: var(--meta-bg);
             color: var(--meta-fg);
             border: 1px solid var(--meta-border);
@@ -301,7 +330,7 @@
             font-size: var(--fs-body);
             font-family: Arial, sans-serif;
             font-weight: var(--fw-regular);
-            height: 2.2em;
+            height: var(--meta-control-h);
             padding: 0 10px;
         }
 
@@ -309,8 +338,9 @@
             position: relative;
             display: grid;
             align-items: center;
+            box-sizing: border-box;
             width: 12.5em;
-            height: 2.2em;
+            height: var(--meta-control-h);
         }
 
         .meta-input-wrap > input,
@@ -318,7 +348,7 @@
         .meta-input-wrap > .meta-save {
             grid-area: 1 / 1;
             width: 100%;
-            height: 2.2em;
+            height: var(--meta-control-h);
             box-sizing: border-box;
             transition: opacity 0.45s ease, transform 0.45s ease;
         }
@@ -351,18 +381,23 @@
         .meta-auth-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--meta-gap);
         }
 
         .meta-save {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
             margin: 0;
             padding: 0 10px;
-            border: none;
+            border: 1px solid #0f9b0f;
             background: #0f9b0f;
             color: #fff;
             font-size: var(--fs-body);
             font-family: Arial, sans-serif;
             font-weight: var(--fw-header);
+            line-height: 1;
+            text-align: left;
             cursor: pointer;
             opacity: 0;
             transform: translateY(8px);
@@ -372,22 +407,24 @@
         .meta-save.is-saved {
             background: #fff;
             color: #000;
-            font-weight: var(--fw-regular);
+            border-color: var(--meta-border);
         }
 
         .meta-logout {
             display: flex;
             align-items: center;
             justify-content: center;
-            flex: 0 0 2.2em;
-            width: 2.2em;
-            height: 2.2em;
+            box-sizing: border-box;
+            flex: 0 0 var(--meta-control-h);
+            width: var(--meta-control-h);
+            height: var(--meta-control-h);
             margin: 0;
             padding: 0;
             border: 1px solid var(--meta-border);
             background: var(--table-header);
             color: var(--table-fg);
             cursor: pointer;
+            display: none;
             opacity: 0;
             transform: translateY(8px);
             pointer-events: none;
@@ -427,8 +464,14 @@
             pointer-events: none;
         }
 
-        .is-authed [data-field="password"] > .meta-save,
+        .is-authed [data-field="password"] > .meta-save {
+            opacity: 1;
+            transform: none;
+            pointer-events: auto;
+        }
+
         .is-authed .meta-logout {
+            display: flex;
             opacity: 1;
             transform: none;
             pointer-events: auto;
@@ -504,7 +547,8 @@
 
         .filter-toggle {
             margin: 0;
-            height: 2.2em;
+            box-sizing: border-box;
+            height: var(--meta-control-h);
             padding: 0 10px;
             background: var(--meta-bg);
             color: var(--meta-fg);
@@ -570,7 +614,7 @@
             box-sizing: border-box;
             width: 3.85em;
             min-width: 3.85em;
-            height: 2.2em;
+            height: var(--meta-control-h);
             margin: 0;
             padding: 3px;
             border: none;
@@ -897,12 +941,9 @@
             color: var(--skin-on-fg);
         }
 
-        html[data-theme="light"] .skin-select.is-selected:not(.is-labeled)::before {
+        html[data-theme="light"] .skin-select.is-selected:not(.is-labeled)::before,
+        html[data-theme="dark"] .skin-select.is-selected:not(.is-labeled)::before {
             transform: translate(-50%, -50%);
-        }
-
-        html[data-theme="light"] .meta-save.is-saved {
-            box-shadow: inset 0 0 0 1px #111;
         }
 
         .skin-select.is-disabled {
@@ -934,8 +975,8 @@
             filter: blur(6px);
             transition: opacity 0.35s ease, transform 0.35s ease, filter 0.35s ease;
             background-image:
-                linear-gradient(to top right, transparent calc(50% - 1px), var(--skin-color-down) calc(50% - 1px), var(--skin-color-down) calc(50% + 1px), transparent calc(50% + 1px)),
-                linear-gradient(to bottom right, transparent calc(50% - 1px), var(--skin-color-down) calc(50% - 1px), var(--skin-color-down) calc(50% + 1px), transparent calc(50% + 1px));
+                linear-gradient(to top right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px)),
+                linear-gradient(to bottom right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px));
         }
 
         .skin-search-shimmer {
@@ -1509,10 +1550,13 @@
         <h1>VaLocker</h1>
         <div class="header-tools">
         <button type="button" id="export-docx" class="export-docx is-off" aria-disabled="true">Export</button>
-        <div class="theme-switch" role="group" aria-label="Color">
-            <button type="button" class="theme-swatch theme-swatch-green is-on" data-theme="green" aria-label="Green" aria-pressed="true"></button>
-            <button type="button" class="theme-swatch theme-swatch-dark" data-theme="dark" aria-label="Dark" aria-pressed="false"></button>
-            <button type="button" class="theme-swatch theme-swatch-light" data-theme="light" aria-label="Light" aria-pressed="false"></button>
+        <div class="theme-switch">
+            <button type="button" class="theme-swatch theme-current theme-swatch-green" id="theme-current" aria-label="Color: Green" aria-haspopup="listbox" aria-expanded="false"></button>
+            <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
+                <button type="button" class="theme-swatch theme-swatch-green is-on" data-theme="green" aria-label="Green"></button>
+                <button type="button" class="theme-swatch theme-swatch-dark" data-theme="dark" aria-label="Dark"></button>
+                <button type="button" class="theme-swatch theme-swatch-light" data-theme="light" aria-label="Light"></button>
+            </div>
         </div>
         </div>
     </header>
@@ -1565,7 +1609,7 @@
                 <div class="table-meta-search">
                     <label class="meta-label" for="locker-search">Search</label>
                     <span class="search-wrap">
-                        <input id="locker-search" type="text" placeholder="Search skin" autocomplete="off" spellcheck="false">
+                        <input id="locker-search" type="text" placeholder="Reaver, Primordium, ..." autocomplete="off" spellcheck="false">
                         <button type="button" class="search-clear" id="search-clear" hidden aria-label="Exit search">
                             <svg viewBox="0 0 16 16" aria-hidden="true">
                                 <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"></circle>

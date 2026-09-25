@@ -1604,10 +1604,15 @@ identityForm.addEventListener("click", (event) => {
   toggleWarnTip(button.closest(".meta-input-wrap"));
 });
 
-document.querySelector(".theme-switch")?.addEventListener("click", (event) => {
-  const swatch = event.target.closest(".theme-swatch");
-  if (swatch) applyTheme(swatch.dataset.theme);
-});
+const themeTrigger = document.getElementById("theme-current");
+const themeMenu = document.getElementById("theme-menu");
+const THEME_LABELS = { green: "Green", dark: "Dark", light: "Light" };
+
+function closeThemeMenu() {
+  if (!themeMenu || !themeTrigger) return;
+  themeMenu.hidden = true;
+  themeTrigger.setAttribute("aria-expanded", "false");
+}
 
 function applyTheme(theme) {
   if (theme !== "dark" && theme !== "light") theme = "green";
@@ -1617,12 +1622,27 @@ function applyTheme(theme) {
   } catch {
     /* ignore */
   }
-  for (const swatch of document.querySelectorAll(".theme-swatch")) {
-    const on = swatch.dataset.theme === theme;
-    swatch.classList.toggle("is-on", on);
-    swatch.setAttribute("aria-pressed", on ? "true" : "false");
+  if (themeTrigger) {
+    themeTrigger.className = `theme-swatch theme-current theme-swatch-${theme}`;
+    themeTrigger.setAttribute("aria-label", `Color: ${THEME_LABELS[theme]}`);
   }
+  for (const swatch of themeMenu?.querySelectorAll(".theme-swatch") || []) {
+    swatch.classList.toggle("is-on", swatch.dataset.theme === theme);
+  }
+  closeThemeMenu();
 }
+
+themeTrigger?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (!themeMenu) return;
+  const open = themeMenu.hidden;
+  themeMenu.hidden = !open;
+  themeTrigger.setAttribute("aria-expanded", open ? "true" : "false");
+});
+themeMenu?.addEventListener("click", (event) => {
+  const swatch = event.target.closest(".theme-swatch");
+  if (swatch?.dataset.theme) applyTheme(swatch.dataset.theme);
+});
 
 try {
   applyTheme(localStorage.getItem("valocker-theme") || "green");
@@ -1699,6 +1719,7 @@ labelOverlay.addEventListener("click", (event) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".meta-input-wrap")) closeWarnTips();
   if (!event.target.closest(".filter-wrap")) closeFilterMenu();
+  if (!event.target.closest(".theme-switch")) closeThemeMenu();
   if (!openSkinSelect) return;
   if (openSkinSelect.wrap.contains(event.target) || openSkinSelect.shell.contains(event.target)) return;
   closeSkinMenu();
@@ -1709,6 +1730,7 @@ document.addEventListener("keydown", (event) => {
     closeWarnTips();
     closeSkinMenu();
     closeFilterMenu();
+    closeThemeMenu();
     if (!labelOverlay.hidden) closeLabelWindows();
     else if (labelling) exitLabellingMode();
   }
