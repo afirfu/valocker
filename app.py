@@ -14,8 +14,6 @@ from server import (
     COOKIE_NAME,
     ROOT,
     SESSION_DAYS,
-    _db_lock,
-    connect,
     create_session_token,
     current_user_from_cookie,
     hash_password,
@@ -25,6 +23,7 @@ from server import (
     utc_now,
     user_public,
 )
+from store import create_user, delete_session, find_user, load_locker, save_locker, user_exists
 
 app = Flask(__name__)
 init_db()
@@ -87,16 +86,7 @@ def api_identity():
     username = normalize_username(request.args.get("username") or "")
     if not username:
         return jsonify({"exists": False})
-    with _db_lock:
-        conn = connect()
-        try:
-            row = conn.execute(
-                "SELECT id FROM users WHERE lower(username) = lower(?)",
-                (username,),
-            ).fetchone()
-        finally:
-            conn.close()
-    return jsonify({"exists": bool(row)})
+    return jsonify({"exists": user_exists(username)})
 
 
 @app.get("/api/picks")
@@ -104,28 +94,7 @@ def api_get_picks():
     user = current_user()
     if not user:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
-    with _db_lock:
-        conn = connect()
-        try:
-            rows = conn.execute(
-                "SELECT pick_key, skin_name FROM picks WHERE user_id = ?",
-                (user["id"],),
-            ).fetchall()
-            label_rows = conn.execute(
-                "SELECT pick_key, color, slant, bold FROM labels WHERE user_id = ?",
-                (user["id"],),
-            ).fetchall()
-        finally:
-            conn.close()
-    picks = {row["pick_key"]: row["skin_name"] for row in rows}
-    labels = {
-        row["pick_key"]: {
-            "color": row["color"] or "",
-            "slant": bool(row["slant"]),
-            "bold": bool(row["bold"]),
-        }
-        for row in label_rows
-    }
+    picks, labels = load_locker(user["id"])
     return jsonify({"picks": picks, "labels": labels})
 
 
@@ -139,26 +108,9 @@ def api_register():
     if len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters"}), HTTPStatus.BAD_REQUEST
     salt, digest = hash_password(password)
-    with _db_lock:
-        conn = connect()
-        try:
-            existing = conn.execute(
-                "SELECT id FROM users WHERE lower(username) = lower(?)",
-                (username,),
-            ).fetchone()
-            if existing:
-                return jsonify({"error": "That username already exists"}), HTTPStatus.CONFLICT
-            cursor = conn.execute(
-                """
-                INSERT INTO users (username, password_salt, password_hash, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (username, salt, digest, iso(utc_now())),
-            )
-            conn.commit()
-            user_id = cursor.lastrowid
-        finally:
-            conn.close()
+    if user_exists(username):
+        return jsonify({"error": "That username already exists"}), HTTPStatus.CONFLICT
+    user_id = create_user(username, salt, digest, iso(utc_now()))
     token = create_session_token(user_id)
     response = jsonify({"user": {"username": username}})
     return set_session_cookie(response, token)
@@ -169,15 +121,7 @@ def api_login():
     body = request.get_json(silent=True) or {}
     username = normalize_username(str(body.get("username") or ""))
     password = str(body.get("password") or "")
-    with _db_lock:
-        conn = connect()
-        try:
-            user = conn.execute(
-                "SELECT * FROM users WHERE lower(username) = lower(?)",
-                (username,),
-            ).fetchone()
-        finally:
-            conn.close()
+    user = find_user(username)
     if not user:
         return jsonify({"error": "Username or password is wrong"}), HTTPStatus.UNAUTHORIZED
     _, digest = hash_password(password, user["password_salt"])
@@ -198,13 +142,7 @@ def api_logout():
         cookie.load(raw)
         morsel = cookie.get(COOKIE_NAME)
         if morsel:
-            with _db_lock:
-                conn = connect()
-                try:
-                    conn.execute("DELETE FROM sessions WHERE token = ?", (morsel.value,))
-                    conn.commit()
-                finally:
-                    conn.close()
+            delete_session(morsel.value)
     response = jsonify({"ok": True})
     return set_session_cookie(response, None, clear=True)
 
@@ -251,30 +189,7 @@ def api_save_picks():
             if not color and not slant and not bold:
                 continue
             label_items.append((pick_key, color, slant, bold))
-    now = iso(utc_now())
-    with _db_lock:
-        conn = connect()
-        try:
-            conn.execute("DELETE FROM picks WHERE user_id = ?", (user["id"],))
-            conn.executemany(
-                """
-                INSERT INTO picks (user_id, pick_key, skin_name, updated_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                [(user["id"], pick_key, skin_name, now) for pick_key, skin_name in cleaned],
-            )
-            if isinstance(raw_labels, dict):
-                conn.execute("DELETE FROM labels WHERE user_id = ?", (user["id"],))
-                conn.executemany(
-                    """
-                    INSERT INTO labels (user_id, pick_key, color, slant, bold)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    [(user["id"], pick_key, color, slant, bold) for pick_key, color, slant, bold in label_items],
-                )
-            conn.commit()
-        finally:
-            conn.close()
+    save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
     return jsonify({"ok": True})
 
 

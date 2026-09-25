@@ -208,10 +208,65 @@
         }
 
         .table-meta-tools {
-            margin-left: auto;
             flex: 0 0 auto;
             flex-wrap: nowrap;
             justify-content: flex-end;
+        }
+
+        .table-meta-search {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            flex: 1 1 0;
+            width: 100%;
+            min-width: 8em;
+            gap: 4px;
+        }
+
+        .search-wrap {
+            position: relative;
+            display: block;
+            width: 100%;
+            height: 2.2em;
+        }
+
+        .search-wrap input {
+            width: 100%;
+            box-sizing: border-box;
+            padding-right: 2.2em;
+        }
+
+        .search-wrap input[type="text"]::-webkit-search-cancel-button {
+            appearance: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            top: 50%;
+            right: 8px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.35em;
+            height: 1.35em;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--meta-fg);
+            cursor: pointer;
+            transform: translateY(-50%);
+        }
+
+        .search-clear[hidden] {
+            display: none !important;
+        }
+
+        .search-clear svg {
+            display: block;
+            width: 16px;
+            height: 16px;
         }
 
         .meta-field,
@@ -553,16 +608,19 @@
         .table-meta input:disabled,
         .table-meta select:disabled,
         .filter-toggle:disabled,
+        .label-toggle:disabled,
         .meta-control:has(input:disabled),
         .meta-control:has(select:disabled),
-        .meta-control:has(.filter-toggle:disabled) {
+        .meta-control:has(.filter-toggle:disabled),
+        .meta-control:has(.label-toggle:disabled) {
             opacity: 0.45;
             cursor: not-allowed;
         }
 
         .table-meta input:disabled,
         .table-meta select:disabled,
-        .filter-toggle:disabled {
+        .filter-toggle:disabled,
+        .label-toggle:disabled {
             pointer-events: none;
         }
 
@@ -878,6 +936,95 @@
             background-image:
                 linear-gradient(to top right, transparent calc(50% - 1px), var(--skin-color-down) calc(50% - 1px), var(--skin-color-down) calc(50% + 1px), transparent calc(50% + 1px)),
                 linear-gradient(to bottom right, transparent calc(50% - 1px), var(--skin-color-down) calc(50% - 1px), var(--skin-color-down) calc(50% + 1px), transparent calc(50% + 1px));
+        }
+
+        .skin-search-shimmer {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(
+                90deg,
+                var(--tbl-skel-base) 18%,
+                var(--tbl-skel-highlight) 50%,
+                var(--tbl-skel-base) 82%
+            );
+            background-size: 220% 100%;
+            animation: nuda-table-shimmer 3.8s ease-in-out infinite;
+            animation-delay: calc(var(--search-col, 0) * 0.48s + var(--search-row, 0) * 0.1s);
+            transition: opacity 0.45s ease;
+        }
+
+        :root {
+            --tbl-skel-base: rgba(255, 255, 255, 0.06);
+            --tbl-skel-highlight: rgba(255, 255, 255, 0.32);
+        }
+
+        html[data-theme="light"] {
+            --tbl-skel-base: rgba(0, 0, 0, 0.05);
+            --tbl-skel-highlight: rgba(0, 0, 0, 0.28);
+        }
+
+        @keyframes nuda-table-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .skin-search-shimmer {
+                animation: none;
+                background: var(--tbl-skel-base);
+            }
+        }
+
+        body.is-searching .skin-select:not(.is-disabled) {
+            cursor: default;
+        }
+
+        body.is-searching .skin-select:not(.is-search-hit):not(.is-disabled) .skin-trigger {
+            opacity: 0;
+            transform: translateY(-12px) scale(0.88);
+            filter: blur(4px);
+        }
+
+        body.is-searching .skin-select:not(.is-search-hit):not(.is-disabled) .skin-arrow {
+            opacity: 0;
+        }
+
+        body.is-searching.has-search-query .skin-select:not(.is-search-hit):not(.is-disabled) .skin-mode-x {
+            opacity: 1;
+            transform: none;
+            filter: blur(0);
+        }
+
+        body.is-searching:not(.has-search-query) .skin-select:not(.is-search-hit):not(.is-disabled) .skin-search-shimmer {
+            opacity: 1;
+        }
+
+        body.is-searching .skin-select:not(.is-search-hit):not(.is-disabled)::before,
+        body.is-searching .skin-select:not(.is-search-hit):not(.is-disabled):hover::before,
+        body.is-searching .skin-select:not(.is-search-hit):not(.is-disabled):focus-within::before {
+            transform: translate(40%, 40%);
+            background: var(--skin-color);
+        }
+
+        body.is-searching .skin-select.is-search-hit {
+            color: var(--skin-on-fg);
+        }
+
+        body.is-searching .skin-select.is-search-hit::before {
+            transform: translate(-50%, -50%);
+            background: var(--skin-color);
+        }
+
+        body.is-searching .skin-select.is-search-hit .skin-arrow {
+            opacity: 0;
+        }
+
+        body.is-searching .skin-select,
+        body.is-searching .skin-select::before {
+            transition: none;
         }
 
         .skin-select.is-disabled .skin-arrow {
@@ -1414,6 +1561,18 @@
                             </span>
                         </div>
                     </form>
+                </div>
+                <div class="table-meta-search">
+                    <label class="meta-label" for="locker-search">Search</label>
+                    <span class="search-wrap">
+                        <input id="locker-search" type="text" placeholder="Search skin" autocomplete="off" spellcheck="false">
+                        <button type="button" class="search-clear" id="search-clear" hidden aria-label="Exit search">
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                                <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+                                <path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"></path>
+                            </svg>
+                        </button>
+                    </span>
                 </div>
                 <div class="table-meta-tools">
                     <div class="meta-control">

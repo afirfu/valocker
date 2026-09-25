@@ -53,6 +53,8 @@ const BUCKETS = ["ultraExclusive", "premiumFinisher", "premiumNoFinisher", "sele
 const tableBody = document.getElementById("locker-body");
 const headerRow = document.getElementById("locker-head");
 const sortEl = document.getElementById("locker-sort");
+const searchInput = document.getElementById("locker-search");
+const searchClear = document.getElementById("search-clear");
 const filterBtn = document.getElementById("locker-filter");
 const filterMenu = document.getElementById("filter-menu");
 const labelBtn = document.getElementById("locker-label");
@@ -112,6 +114,7 @@ const LABEL_FAMILIES = {
 };
 let labelDraft = { pickId: "", color: "", slant: false, bold: false };
 let labelling = false;
+let searching = false;
 let currentUser = null;
 let identityExists = null;
 let identityTimer = 0;
@@ -1003,6 +1006,7 @@ function rarityCaption(bucket) {
 }
 
 function applySkinLabel(wrap) {
+  if (searching) return;
   const pickId = wrap.dataset.pick;
   const label = pickId ? lockerLabels.get(pickId) : null;
   const color = label && wrap.dataset.value ? label.color : "";
@@ -1051,12 +1055,78 @@ function closeLabelWindows() {
 }
 
 function setLabelling(on) {
+  if (on && searching) exitSearchMode();
   labelling = on;
   document.body.classList.toggle("is-labelling", on);
   labelBtn.setAttribute("aria-checked", on ? "true" : "false");
-  sortEl.disabled = on;
-  if (filterBtn) filterBtn.disabled = on;
+  sortEl.disabled = on || searching;
+  if (filterBtn) filterBtn.disabled = on || searching;
   if (on) closeFilterMenu();
+}
+
+function matchSkinName(names, query) {
+  const q = query.trim().toLowerCase();
+  if (!q || !names?.length) return "";
+  return (
+    names.find((name) => name.toLowerCase() === q) ||
+    names.find((name) => name.toLowerCase().startsWith(q)) ||
+    names.find((name) => name.toLowerCase().includes(q)) ||
+    ""
+  );
+}
+
+function applySearchHits() {
+  const query = searching ? searchInput.value : "";
+  const hasQuery = searching && Boolean(query.trim());
+  document.body.classList.toggle("has-search-query", hasQuery);
+  for (const wrap of document.querySelectorAll(".skin-select")) {
+    if (wrap.classList.contains("is-disabled")) {
+      wrap.classList.remove("is-search-hit");
+      continue;
+    }
+    const hit = hasQuery ? matchSkinName(wrap._searchNames || [], query) : "";
+    wrap.classList.toggle("is-search-hit", Boolean(hit));
+    const button = wrap.querySelector(".skin-trigger");
+    if (searching) {
+      wrap.classList.toggle("is-selected", Boolean(hit));
+      wrap.classList.remove("is-labeled", "is-slanted", "is-bought");
+      wrap.style.removeProperty("--color");
+      if (button) button.textContent = hit;
+    } else if (button) {
+      button.textContent = wrap.dataset.value || "Choose skin";
+      syncSelectedState(wrap);
+      applySkinLabel(wrap);
+    }
+  }
+}
+
+function enterSearchMode() {
+  if (searching) return;
+  if (labelling) exitLabellingMode();
+  searching = true;
+  document.body.classList.add("is-searching");
+  searchClear.hidden = false;
+  sortEl.disabled = true;
+  if (filterBtn) filterBtn.disabled = true;
+  if (labelBtn) labelBtn.disabled = true;
+  closeSkinMenu();
+  closeFilterMenu();
+  applySearchHits();
+}
+
+function exitSearchMode() {
+  if (!searching && !searchInput.value) {
+    searchClear.hidden = true;
+    return;
+  }
+  searching = false;
+  searchInput.value = "";
+  document.body.classList.remove("is-searching", "has-search-query");
+  searchClear.hidden = true;
+  sortEl.disabled = labelling;
+  if (filterBtn) filterBtn.disabled = labelling;
+  if (labelBtn) labelBtn.disabled = false;
+  applySearchHits();
 }
 
 function exitLabellingMode() {
@@ -1119,7 +1189,7 @@ function openLabelEditor(wrap) {
   labelOverlay.classList.add("is-on");
 }
 
-function createSelect(options, pickId = "", weaponOrId = "") {
+function createSelect(options, pickId = "", weaponOrId = "", searchNames = null) {
   const weaponUuid = typeof weaponOrId === "object" && weaponOrId ? weaponOrId.uuid : weaponOrId;
   const weaponName = typeof weaponOrId === "object" && weaponOrId ? weaponOrId.displayName : "";
   const wrap = document.createElement("div");
@@ -1129,6 +1199,7 @@ function createSelect(options, pickId = "", weaponOrId = "") {
   wrap.dataset.weaponName = weaponName;
   wrap.dataset.bucket = pickId.includes(":") ? pickId.slice(pickId.lastIndexOf(":") + 1) : "";
   wrap.dataset.weapon = weaponUuid || (pickId.includes(":") ? pickId.slice(0, pickId.lastIndexOf(":")) : "");
+  wrap._searchNames = [...new Set((searchNames || options.map((item) => item.name)).filter(Boolean))];
 
   const button = document.createElement("button");
   button.type = "button";
@@ -1139,7 +1210,7 @@ function createSelect(options, pickId = "", weaponOrId = "") {
     list.push({ name: saved, themeUuid: "" });
   }
 
-  if (!list.length) {
+  if (!list.length && !wrap._searchNames.length) {
     button.textContent = "No skins";
     button.disabled = true;
     wrap.classList.add("is-disabled");
@@ -1226,6 +1297,7 @@ function createSelect(options, pickId = "", weaponOrId = "") {
 
   button.addEventListener("click", (event) => {
     event.stopPropagation();
+    if (searching) return;
     if (labelling) {
       closeSkinMenu();
       if (wrap.dataset.value) openLabelEditor(wrap);
@@ -1263,7 +1335,10 @@ function decorateSkinSelect(wrap) {
   const mark = document.createElement("span");
   mark.className = "skin-mode-x";
   mark.setAttribute("aria-hidden", "true");
-  wrap.append(arrow, mark);
+  const shimmer = document.createElement("span");
+  shimmer.className = "skin-search-shimmer";
+  shimmer.setAttribute("aria-hidden", "true");
+  wrap.append(arrow, mark, shimmer);
 }
 
 function createRarityHeader(column, tiersByName) {
@@ -1329,9 +1404,11 @@ function paintLocker() {
   renderRarityHeaders(tiers);
   tableBody.replaceChildren();
 
+  let searchRow = 0;
   for (const group of groups) {
     group.weapons.forEach((weapon, index) => {
       const buckets = skinsForWeapon(weapon, tierByUuid, sequelThemes, themeByUuid, lockerView.sort, sourceIndex);
+      const allBuckets = skinsForWeapon(weapon, tierByUuid, sequelThemes, themeByUuid, lockerView.sort, sourceIndex, EXPORT_SOURCES);
       const row = document.createElement("tr");
 
       if (index === 0) {
@@ -1345,18 +1422,23 @@ function paintLocker() {
       const gunCell = createGunCell(weapon);
       row.append(gunCell);
 
-      for (const bucket of BUCKETS) {
+      BUCKETS.forEach((bucket, col) => {
         const cell = document.createElement("td");
-        cell.append(createSelect(buckets[bucket], `${weapon.uuid}:${bucket}`, weapon));
+        const select = createSelect(buckets[bucket], `${weapon.uuid}:${bucket}`, weapon, allBuckets[bucket].map((item) => item.name));
+        select.style.setProperty("--search-col", col);
+        select.style.setProperty("--search-row", searchRow);
+        cell.append(select);
         row.append(cell);
-      }
+      });
 
       tableBody.append(row);
+      searchRow += 1;
     });
   }
 
   syncCollectionLocks();
   applyAllSkinLabels();
+  if (searching) applySearchHits();
 }
 
 function closeFilterMenu() {
@@ -1568,8 +1650,21 @@ async function init() {
 
 labelBtn.addEventListener("click", (event) => {
   event.preventDefault();
+  if (searching) return;
   if (labelling) exitLabellingMode();
   else enterLabellingMode();
+});
+searchInput?.addEventListener("focus", enterSearchMode);
+searchInput?.addEventListener("pointerdown", enterSearchMode);
+searchInput?.addEventListener("input", () => {
+  if (!searching) enterSearchMode();
+  applySearchHits();
+});
+searchClear?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  exitSearchMode();
+  searchInput.blur();
 });
 labelUpdateBtn.addEventListener("click", (event) => {
   event.preventDefault();

@@ -8,7 +8,6 @@ import json
 import os
 import secrets
 import sqlite3
-import threading
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -17,18 +16,22 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from export_docx import build_locker_docx, sanitize_groups
+from store import (
+    _db_lock,
+    connect,
+    create_session,
+    create_user,
+    delete_session,
+    find_user,
+    load_locker,
+    save_locker,
+    use_supabase,
+    user_exists,
+    user_from_session,
+)
 
 ROOT = Path(__file__).resolve().parent
 COOKIE_NAME = "valocker_session"
-
-
-def db_path() -> Path:
-    if os.environ.get("VERCEL"):
-        return Path("/tmp/valocker.db")
-    return ROOT / "valocker.db"
-
-
-DB_PATH = db_path()
 SESSION_DAYS = 30
 PBKDF2_ROUNDS = 200_000
 HOST = "127.0.0.1"
@@ -37,8 +40,6 @@ OWNER_USERNAME = "zapirpi"
 OWNER_PASSWORD = "956230"
 LEGACY_ACCOUNT = "uratadhi#NESON"
 LEGACY_RIOT = "AhmadDrizzy"
-
-_db_lock = threading.Lock()
 
 
 def utc_now() -> datetime:
@@ -51,13 +52,6 @@ def iso(dt: datetime) -> str:
 
 def parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value)
-
-
-def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path(), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
 
 
 def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -144,55 +138,33 @@ def rebuild_auth_tables(conn: sqlite3.Connection) -> None:
     ensure_schema(conn)
 
 
-def seed_owner(conn: sqlite3.Connection, inherited_picks: list[tuple[str, str, str]] | None = None) -> None:
+def seed_owner(inherited_picks: list[tuple[str, str, str]] | None = None) -> None:
     salt, digest = hash_password(OWNER_PASSWORD)
-    row = conn.execute(
-        "SELECT id FROM users WHERE lower(username) = lower(?)",
-        (OWNER_USERNAME,),
-    ).fetchone()
-    if row:
-        conn.execute(
-            "UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?",
-            (salt, digest, row["id"]),
-        )
-        user_id = row["id"]
+    existing = find_user(OWNER_USERNAME)
+    if existing:
+        user_id = int(existing["id"])
     else:
-        cursor = conn.execute(
-            """
-            INSERT INTO users (username, password_salt, password_hash, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (OWNER_USERNAME, salt, digest, iso(utc_now())),
-        )
-        user_id = cursor.lastrowid
-    for pick_key, skin_name, updated_at in inherited_picks or []:
-        conn.execute(
-            """
-            INSERT INTO picks (user_id, pick_key, skin_name, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, pick_key) DO UPDATE SET
-                skin_name = excluded.skin_name,
-                updated_at = excluded.updated_at
-            """,
-            (user_id, pick_key, skin_name, updated_at),
-        )
+        user_id = create_user(OWNER_USERNAME, salt, digest, iso(utc_now()))
+    if inherited_picks:
+        save_locker(user_id, [(key, name) for key, name, _updated in inherited_picks], [], iso(utc_now()), False)
 
 
 def init_db() -> None:
-    with _db_lock:
-        conn = connect()
-        try:
-            cols = table_columns(conn, "users")
-            inherited: list[tuple[str, str, str]] = []
-            if cols and "username" not in cols:
-                inherited = legacy_owner_picks(conn)
-                rebuild_auth_tables(conn)
-            else:
-                ensure_schema(conn)
-            seed_owner(conn, inherited)
-            conn.commit()
-        finally:
-            conn.close()
+    inherited: list[tuple[str, str, str]] = []
+    if not use_supabase():
+        with _db_lock:
+            conn = connect()
+            try:
+                cols = table_columns(conn, "users")
+                if cols and "username" not in cols:
+                    inherited = legacy_owner_picks(conn)
+                    rebuild_auth_tables(conn)
+                else:
+                    ensure_schema(conn)
+                conn.commit()
+            finally:
+                conn.close()
+    seed_owner(inherited)
 
 
 def hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:
@@ -205,7 +177,7 @@ def normalize_username(username: str) -> str:
     return username.strip()
 
 
-def user_public(row: sqlite3.Row) -> dict:
+def user_public(row) -> dict:
     return {"username": row["username"]}
 
 
@@ -218,47 +190,16 @@ def cookie_token(raw: str | None) -> str | None:
     return morsel.value if morsel else None
 
 
-def current_user_from_cookie(raw: str | None) -> sqlite3.Row | None:
+def current_user_from_cookie(raw: str | None):
     token = cookie_token(raw)
     if not token:
         return None
-    now = utc_now()
-    with _db_lock:
-        conn = connect()
-        try:
-            row = conn.execute(
-                """
-                SELECT users.*, sessions.expires_at
-                FROM sessions
-                JOIN users ON users.id = sessions.user_id
-                WHERE sessions.token = ?
-                """,
-                (token,),
-            ).fetchone()
-            if not row:
-                return None
-            if parse_iso(row["expires_at"]) <= now:
-                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-                conn.commit()
-                return None
-            return row
-        finally:
-            conn.close()
+    return user_from_session(token, iso(utc_now()))
 
 
 def create_session_token(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
-    expires = iso(utc_now() + timedelta(days=SESSION_DAYS))
-    with _db_lock:
-        conn = connect()
-        try:
-            conn.execute(
-                "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
-                (token, user_id, expires),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+    create_session(user_id, token, iso(utc_now() + timedelta(days=SESSION_DAYS)))
     return token
 
 
@@ -334,7 +275,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
     def current_token(self) -> str | None:
         return cookie_token(self.headers.get("Cookie"))
 
-    def current_user(self) -> sqlite3.Row | None:
+    def current_user(self):
         return current_user_from_cookie(self.headers.get("Cookie"))
 
     def create_session(self, user_id: int) -> str:
@@ -366,44 +307,14 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             if not username:
                 self.send_json({"exists": False})
                 return
-            with _db_lock:
-                conn = connect()
-                try:
-                    row = conn.execute(
-                        "SELECT id FROM users WHERE lower(username) = lower(?)",
-                        (username,),
-                    ).fetchone()
-                finally:
-                    conn.close()
-            self.send_json({"exists": bool(row)})
+            self.send_json({"exists": user_exists(username)})
             return
         if parsed.path == "/api/picks":
             user = self.current_user()
             if not user:
                 self.send_json({"error": "Not logged in"}, HTTPStatus.UNAUTHORIZED)
                 return
-            with _db_lock:
-                conn = connect()
-                try:
-                    rows = conn.execute(
-                        "SELECT pick_key, skin_name FROM picks WHERE user_id = ?",
-                        (user["id"],),
-                    ).fetchall()
-                    label_rows = conn.execute(
-                        "SELECT pick_key, color, slant, bold FROM labels WHERE user_id = ?",
-                        (user["id"],),
-                    ).fetchall()
-                finally:
-                    conn.close()
-            picks = {row["pick_key"]: row["skin_name"] for row in rows}
-            labels = {
-                row["pick_key"]: {
-                    "color": row["color"] or "",
-                    "slant": bool(row["slant"]),
-                    "bold": bool(row["bold"]),
-                }
-                for row in label_rows
-            }
+            picks, labels = load_locker(user["id"])
             self.send_json({"picks": picks, "labels": labels})
             return
         super().do_GET()
@@ -438,27 +349,10 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             raise ValueError("Password must be at least 6 characters")
 
         salt, digest = hash_password(password)
-        with _db_lock:
-            conn = connect()
-            try:
-                existing = conn.execute(
-                    "SELECT id FROM users WHERE lower(username) = lower(?)",
-                    (username,),
-                ).fetchone()
-                if existing:
-                    self.send_json({"error": "That username already exists"}, HTTPStatus.CONFLICT)
-                    return
-                cursor = conn.execute(
-                    """
-                    INSERT INTO users (username, password_salt, password_hash, created_at)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (username, salt, digest, iso(utc_now())),
-                )
-                conn.commit()
-                user_id = cursor.lastrowid
-            finally:
-                conn.close()
+        if user_exists(username):
+            self.send_json({"error": "That username already exists"}, HTTPStatus.CONFLICT)
+            return
+        user_id = create_user(username, salt, digest, iso(utc_now()))
         token = self.create_session(user_id)
         self.send_json(
             {"user": {"username": username}},
@@ -469,15 +363,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
         body = self.read_json()
         username = normalize_username(str(body.get("username") or ""))
         password = str(body.get("password") or "")
-        with _db_lock:
-            conn = connect()
-            try:
-                user = conn.execute(
-                    "SELECT * FROM users WHERE lower(username) = lower(?)",
-                    (username,),
-                ).fetchone()
-            finally:
-                conn.close()
+        user = find_user(username)
         if not user:
             self.send_json({"error": "Username or password is wrong"}, HTTPStatus.UNAUTHORIZED)
             return
@@ -494,13 +380,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
     def handle_logout(self) -> None:
         token = self.current_token()
         if token:
-            with _db_lock:
-                conn = connect()
-                try:
-                    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-                    conn.commit()
-                finally:
-                    conn.close()
+            delete_session(token)
         self.send_json({"ok": True}, extra_headers=[("Set-Cookie", self.session_cookie_header(None, clear=True))])
 
     def handle_save_pick(self) -> None:
@@ -545,30 +425,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                 if not color and not slant and not bold:
                     continue
                 label_items.append((pick_key, color, slant, bold))
-        now = iso(utc_now())
-        with _db_lock:
-            conn = connect()
-            try:
-                conn.execute("DELETE FROM picks WHERE user_id = ?", (user["id"],))
-                conn.executemany(
-                    """
-                    INSERT INTO picks (user_id, pick_key, skin_name, updated_at)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    [(user["id"], pick_key, skin_name, now) for pick_key, skin_name in cleaned],
-                )
-                if isinstance(raw_labels, dict):
-                    conn.execute("DELETE FROM labels WHERE user_id = ?", (user["id"],))
-                    conn.executemany(
-                        """
-                        INSERT INTO labels (user_id, pick_key, color, slant, bold)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        [(user["id"], pick_key, color, slant, bold) for pick_key, color, slant, bold in label_items],
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+        save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
         self.send_json({"ok": True})
 
     def handle_export(self) -> None:
@@ -591,7 +448,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     init_db()
     server = ThreadingHTTPServer((HOST, PORT), VaLockerHandler)
-    print(f"VaLocker running at http://{HOST}:{PORT}/index.html")
+    backend = "Supabase" if use_supabase() else "local SQLite"
+    print(f"VaLocker running at http://{HOST}:{PORT}/index.html ({backend})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
