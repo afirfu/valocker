@@ -186,9 +186,10 @@ def api_save_picks():
                 color = ""
             slant = 1 if raw.get("slant") else 0
             bold = 1 if raw.get("bold") else 0
-            if not color and not slant and not bold:
+            underline = 1 if raw.get("underline") else 0
+            if not color and not slant and not bold and not underline:
                 continue
-            label_items.append((pick_key, color, slant, bold))
+            label_items.append((pick_key, color, slant, bold, underline))
     save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
     return jsonify({"ok": True})
 

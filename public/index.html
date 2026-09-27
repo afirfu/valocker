@@ -17,6 +17,20 @@
             box-sizing: border-box;
         }
 
+        html {
+            overflow-x: hidden;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        html::-webkit-scrollbar,
+        body::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
         :root {
             --fs-title: 2.5rem;
             --fs-header: 0.95rem;
@@ -91,6 +105,8 @@
             min-height: 100vh;
             line-height: 1.6;
             overflow-x: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
 
         .site-header {
@@ -689,13 +705,14 @@
             font-weight: var(--fw-header);
         }
 
+        .skin-select.is-underlined .skin-trigger {
+            text-decoration: underline;
+        }
+
         .label-overlay {
             position: fixed;
             inset: 0;
             z-index: 80;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             background: transparent;
             pointer-events: none;
         }
@@ -754,58 +771,136 @@
         }
 
         .label-card {
+            position: fixed;
+            z-index: 1;
+            width: calc(3 * var(--label-cell-w, 120px));
+            height: calc(5 * var(--label-cell-h, 40px));
+            padding: 0;
+            background: transparent;
+        }
+
+        .label-grid {
+            display: grid;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            gap: 0;
+            background: transparent;
+            border-top: 1px solid var(--table-border);
+            border-left: 1px solid var(--table-border);
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+        }
+
+        .label-grid > * {
             position: relative;
             z-index: 1;
-            width: min(560px, calc(100vw - 48px));
-            padding: 0;
-            background: #222;
-            opacity: 0;
-            transition: opacity 0.4s ease;
+            box-sizing: border-box;
+            border: 0 solid var(--table-border);
+            border-right-width: 1px;
+            border-bottom-width: 1px;
+            backface-visibility: hidden;
         }
 
-        .label-overlay.is-on .label-card {
-            opacity: 1;
+        .label-area-skin {
+            z-index: 3;
         }
 
-        .label-table {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: collapse;
-            margin: 0;
-            background: #222;
+        .label-card.is-motion .label-grid,
+        .label-card.is-motion .label-grid > * {
+            border-color: transparent;
         }
 
-        .label-table th,
-        .label-table td {
-            border: 1px solid #fff;
-            padding: 0;
-            text-align: left;
-            vertical-align: middle;
+        .label-card[data-orient="ld"] .label-grid {
+            grid-template-areas:
+                "gun rarity skin"
+                "warpath beastly slant"
+                "archetype derivation bold"
+                "minimal technological underline"
+                "whimsical cartoonish update";
         }
 
-        .label-table th {
+        .label-card[data-orient="lu"] .label-grid {
+            grid-template-areas:
+                "whimsical cartoonish update"
+                "minimal technological underline"
+                "archetype derivation bold"
+                "warpath beastly slant"
+                "gun rarity skin";
+        }
+
+        .label-card[data-orient="rd"] .label-grid {
+            grid-template-areas:
+                "skin rarity gun"
+                "slant beastly warpath"
+                "bold derivation archetype"
+                "underline technological minimal"
+                "update cartoonish whimsical";
+        }
+
+        .label-card[data-orient="ru"] .label-grid {
+            grid-template-areas:
+                "update cartoonish whimsical"
+                "underline technological minimal"
+                "bold derivation archetype"
+                "slant beastly warpath"
+                "skin rarity gun";
+        }
+
+        .label-area-gun { grid-area: gun; }
+        .label-area-rarity { grid-area: rarity; }
+        .label-area-skin { grid-area: skin; }
+        .label-area-warpath { grid-area: warpath; }
+        .label-area-beastly { grid-area: beastly; }
+        .label-area-slant { grid-area: slant; }
+        .label-area-archetype { grid-area: archetype; }
+        .label-area-derivation { grid-area: derivation; }
+        .label-area-bold { grid-area: bold; }
+        .label-area-minimal { grid-area: minimal; }
+        .label-area-technological { grid-area: technological; }
+        .label-area-underline { grid-area: underline; }
+        .label-area-whimsical { grid-area: whimsical; }
+        .label-area-cartoonish { grid-area: cartoonish; }
+        .label-area-update { grid-area: update; }
+
+        .label-head {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            overflow: hidden;
             background: #333;
             color: #fff;
             font-size: var(--fs-header);
-            font-weight: var(--fw-header);
+            font-weight: var(--fw-regular);
             line-height: var(--lh-header);
-            padding: 10px 8px;
+            padding: 6px 8px;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .label-head#label-skin {
+            font-weight: var(--fw-regular);
+            font-style: normal;
         }
 
         .label-choice,
         .label-update {
-            display: block;
+            display: flex;
+            align-items: center;
             width: 100%;
-            min-height: 2.6em;
+            height: 100%;
             margin: 0;
-            padding: 10px 8px;
-            border: none;
+            padding: 6px 8px;
             border-radius: 0;
             font-size: var(--fs-body);
             font-family: Arial, sans-serif;
             font-weight: var(--fw-regular);
             line-height: var(--lh-header);
             text-align: left;
+            overflow: hidden;
+            min-width: 0;
+            white-space: nowrap;
+            text-overflow: ellipsis;
             cursor: pointer;
         }
 
@@ -823,19 +918,35 @@
             color: #fff;
         }
 
-        .label-choice.is-on {
-            box-shadow: inset 0 0 0 2px #222;
+        .label-choice.is-on:not(.is-plain) {
             font-weight: var(--fw-header);
         }
 
         .label-choice.is-plain.is-on {
-            box-shadow: inset 0 0 0 2px #fff;
+            background: #fff;
+            color: #111;
+            font-weight: var(--fw-regular);
+        }
+
+        .label-choice[data-toggle="underline"].is-on {
+            text-decoration: underline;
         }
 
         .label-choice.is-locked {
-            opacity: 0.4;
+            background: #222;
+            color: transparent;
             cursor: default;
             pointer-events: none;
+        }
+
+        .label-choice.is-locked::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(to top right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px)),
+                linear-gradient(to bottom right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px));
         }
 
         .label-choice[data-hint]:hover::after {
@@ -856,10 +967,362 @@
         }
 
         .label-update {
+            background: #222;
+            color: #fff;
+            font-weight: 400;
+            text-align: center;
+            justify-content: center;
+            cursor: default;
+            transition: background-color 0.45s ease, font-weight 0.45s ease, color 0.45s ease;
+        }
+
+        .label-update:not(:disabled) {
+            background: #0f9b0f;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        html[data-theme="light"] .label-head {
+            background: var(--table-bg);
+            color: var(--table-fg);
+        }
+
+        html[data-theme="light"] .label-choice.is-plain {
+            background: var(--table-bg);
+            color: var(--table-fg);
+        }
+
+        html[data-theme="light"] .label-choice.is-plain.is-on {
+            background: #111;
+            color: #fff;
+        }
+
+        html[data-theme="light"] .label-choice.is-locked {
+            background: var(--table-bg);
+        }
+
+        html[data-theme="light"] .label-update {
+            background: var(--table-bg);
+            color: var(--table-fg);
+        }
+
+        html[data-theme="light"] .label-update:not(:disabled) {
             background: #0f9b0f;
             color: #fff;
+        }
+
+        .showcase-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 82;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            pointer-events: none;
+        }
+
+        .showcase-overlay.is-on {
+            pointer-events: auto;
+        }
+
+        .showcase-overlay::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background: rgb(0 0 0 / 0);
+            backdrop-filter: blur(0);
+            -webkit-backdrop-filter: blur(0);
+            pointer-events: none;
+            transition:
+                background 0.4s ease,
+                backdrop-filter 0.4s ease,
+                -webkit-backdrop-filter 0.4s ease;
+        }
+
+        .showcase-overlay.is-on::before {
+            background: rgb(0 0 0 / 0.28);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .showcase-overlay[hidden] {
+            display: none !important;
+        }
+
+        html:has(body.is-showcasing),
+        html:has(body.is-label-open),
+        body.is-showcasing,
+        body.is-label-open {
+            overflow: hidden;
+        }
+
+        .showcase-card {
+            position: relative;
+            z-index: 1;
+            width: min(920px, calc(100vw - 48px));
+            max-height: min(88vh, 820px);
+            border-collapse: collapse;
+            table-layout: fixed;
+            background: var(--table-bg);
+            color: var(--table-fg);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .showcase-overlay.is-on .showcase-card {
+            opacity: 1;
+        }
+
+        .showcase-card th,
+        .showcase-card td {
+            border: 1px solid var(--table-border);
+            padding: 0;
+            vertical-align: middle;
+        }
+
+        .showcase-card th {
+            background: var(--table-bg);
+            padding: 10px 12px;
+            text-align: left;
+        }
+
+        .showcase-kicker {
+            margin: 0 0 4px;
+            font-size: var(--fs-caption);
+            font-weight: var(--fw-regular);
+            opacity: 0.75;
+        }
+
+        .showcase-title {
+            margin: 0;
+            font-size: var(--fs-header);
             font-weight: var(--fw-header);
+            line-height: var(--lh-header);
+        }
+
+        .showcase-close-cell {
+            width: 2.6em;
+            padding: 0;
             text-align: center;
+        }
+
+        .showcase-close {
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 2.6em;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--table-fg);
+            font-size: 1.4rem;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .showcase-card td.showcase-inspect-cell {
+            padding: 0;
+            overflow: hidden;
+            background: var(--table-bg);
+        }
+
+        .showcase-inspect {
+            position: relative;
+            box-sizing: content-box;
+            height: min(42vh, 360px);
+            padding: 28px 32px;
+            overflow: hidden;
+            background: var(--table-bg);
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .showcase-inspect.is-dragging {
+            cursor: grabbing;
+        }
+
+        .showcase-inspect.is-playing {
+            cursor: default;
+            touch-action: auto;
+        }
+
+        .showcase-inspect img,
+        .showcase-inspect video {
+            position: absolute;
+            top: 28px;
+            left: 32px;
+            width: calc(100% - 64px);
+            height: calc(100% - 56px);
+            object-fit: contain;
+            object-position: center;
+            transform-origin: center center;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .showcase-inspect.is-playing video {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto;
+        }
+
+        .showcase-inspect video {
+            background: var(--table-bg);
+        }
+
+        .showcase-card td.showcase-variants-cell {
+            padding: 10px 12px;
+            background: var(--table-bg);
+        }
+
+        .showcase-preview-cell {
+            width: 10em;
+            padding: 0;
+            background: var(--table-bg);
+        }
+
+        .showcase-chromas {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            min-height: 2.6em;
+        }
+
+        .showcase-chroma {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            border: 2px solid rgb(128 128 128 / 0.7);
+            background: var(--table-bg) center / cover no-repeat;
+            cursor: pointer;
+        }
+
+        .showcase-chroma.is-on {
+            border-color: var(--table-fg);
+        }
+
+        .showcase-play {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 2.6em;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--table-fg);
+            cursor: pointer;
+        }
+
+        .showcase-play svg {
+            display: block;
+            width: 16px;
+            height: 16px;
+        }
+
+        .showcase-play .icon-pause {
+            display: none;
+        }
+
+        .showcase-play.is-playing .icon-play {
+            display: none;
+        }
+
+        .showcase-play.is-playing .icon-pause {
+            display: block;
+        }
+
+        .showcase-play:hover {
+            background: var(--table-bg);
+        }
+
+        .showcase-play[hidden] {
+            display: none;
+        }
+
+        .showcase-strip-cell {
+            padding: 0;
+            background: var(--table-bg);
+        }
+
+        .showcase-strip {
+            display: flex;
+            gap: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            overscroll-behavior-x: contain;
+            scrollbar-width: none;
+        }
+
+        .showcase-strip::-webkit-scrollbar {
+            display: none;
+        }
+
+        .showcase-tile {
+            flex: 0 0 104px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: var(--table-bg);
+            color: inherit;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .showcase-tile.is-empty {
+            cursor: default;
+        }
+
+        .showcase-tile-media {
+            position: relative;
+            display: block;
+            width: 100%;
+            height: 72px;
+        }
+
+        .showcase-tile img {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: calc(100% - 16px);
+            height: calc(100% - 16px);
+            object-fit: contain;
+            object-position: center;
+            background: var(--table-bg);
+        }
+
+        .showcase-tile-x {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(to top right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px)),
+                linear-gradient(to bottom right, transparent calc(50% - 1px), var(--skin-x) calc(50% - 1px), var(--skin-x) calc(50% + 1px), transparent calc(50% + 1px));
+        }
+
+        .showcase-tile-name {
+            display: block;
+            padding: 6px 4px 8px;
+            font-size: 11px;
+            line-height: 1.25;
+            font-weight: var(--fw-regular);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .showcase-tile.is-on .showcase-tile-name {
+            font-weight: var(--fw-header);
         }
 
         .description {
@@ -1052,6 +1515,7 @@
 
         body.is-searching .skin-select.is-search-hit {
             color: var(--skin-on-fg);
+            cursor: pointer;
         }
 
         body.is-searching .skin-select.is-search-hit::before {
@@ -1330,36 +1794,6 @@
             font-size: var(--fs-body);
             font-weight: var(--fw-regular);
             vertical-align: middle;
-        }
-
-        .label-table {
-            margin-top: 0;
-        }
-
-        .label-table th,
-        .label-table td {
-            padding: 0;
-            text-align: left;
-            border-color: #fff;
-            color: #fff;
-        }
-
-        .label-table th {
-            padding: 10px 8px;
-        }
-
-        .label-table th#label-skin {
-            font-weight: var(--fw-regular);
-            font-style: normal;
-        }
-
-        .label-table td.label-empty {
-            background: #222;
-        }
-
-        .label-empty-fill {
-            display: block;
-            min-height: 2.6em;
         }
 
         td.rarity {
@@ -1675,42 +2109,70 @@
     </div>
     <div id="label-toast" class="label-toast" hidden>Click a selected skin to label it.</div>
     <div id="label-overlay" class="label-overlay" hidden>
-        <div id="label-editor" class="label-card">
-            <table class="label-table">
-                <thead>
-                    <tr>
-                        <th id="label-gun"></th>
-                        <th id="label-rarity"></th>
-                        <th id="label-skin"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><button type="button" class="label-choice is-red" data-color="warpath" data-hint="Red: warpath or beastly">Warpath</button></td>
-                        <td><button type="button" class="label-choice is-red" data-color="beastly" data-hint="Red: warpath or beastly">Beastly</button></td>
-                        <td><button type="button" class="label-choice is-plain" data-toggle="slant" role="switch" aria-checked="false">Slanted</button></td>
-                    </tr>
-                    <tr>
-                        <td><button type="button" class="label-choice is-blue" data-color="archetype" data-hint="Blue: archetype or derivation">Archetype</button></td>
-                        <td><button type="button" class="label-choice is-blue" data-color="derivation" data-hint="Blue: archetype or derivation">Derivation</button></td>
-                        <td><button type="button" class="label-choice is-plain" data-toggle="bold" role="switch" aria-checked="false">Bold</button></td>
-                    </tr>
-                    <tr>
-                        <td><button type="button" class="label-choice is-green" data-color="minimal" data-hint="Green: minimal or technological">Minimal</button></td>
-                        <td><button type="button" class="label-choice is-green" data-color="technological" data-hint="Green: minimal or technological">Technological</button></td>
-                        <td class="label-empty"><span class="label-empty-fill"></span></td>
-                    </tr>
-                    <tr>
-                        <td><button type="button" class="label-choice is-yellow" data-color="whimsical" data-hint="Yellow: cartoonish or whimsical">Whimsical</button></td>
-                        <td><button type="button" class="label-choice is-yellow" data-color="cartoonish" data-hint="Yellow: cartoonish or whimsical">Cartoonish</button></td>
-                        <td class="label-empty"><span class="label-empty-fill"></span></td>
-                    </tr>
-                    <tr>
-                        <td colspan="3"><button type="button" class="label-update" id="label-update">Update</button></td>
-                    </tr>
-                </tbody>
-            </table>
+        <div id="label-editor" class="label-card" data-orient="ld">
+            <div class="label-grid">
+                <div class="label-head label-area-gun" id="label-gun"></div>
+                <div class="label-head label-area-rarity" id="label-rarity"></div>
+                <div class="label-head label-area-skin" id="label-skin"></div>
+                <button type="button" class="label-choice is-red label-area-warpath" data-color="warpath" data-hint="Red: warpath or beastly">Warpath</button>
+                <button type="button" class="label-choice is-red label-area-beastly" data-color="beastly" data-hint="Red: warpath or beastly">Beastly</button>
+                <button type="button" class="label-choice is-plain label-area-slant" data-toggle="slant" role="switch" aria-checked="false">Slanted</button>
+                <button type="button" class="label-choice is-blue label-area-archetype" data-color="archetype" data-hint="Blue: archetype or derivation">Archetype</button>
+                <button type="button" class="label-choice is-blue label-area-derivation" data-color="derivation" data-hint="Blue: archetype or derivation">Derivation</button>
+                <button type="button" class="label-choice is-plain label-area-bold" data-toggle="bold" role="switch" aria-checked="false">Bold</button>
+                <button type="button" class="label-choice is-green label-area-minimal" data-color="minimal" data-hint="Green: minimal or technological">Minimal</button>
+                <button type="button" class="label-choice is-green label-area-technological" data-color="technological" data-hint="Green: minimal or technological">Technological</button>
+                <button type="button" class="label-choice is-plain label-area-underline" data-toggle="underline" role="switch" aria-checked="false">Underline</button>
+                <button type="button" class="label-choice is-yellow label-area-whimsical" data-color="whimsical" data-hint="Yellow: cartoonish or whimsical">Whimsical</button>
+                <button type="button" class="label-choice is-yellow label-area-cartoonish" data-color="cartoonish" data-hint="Yellow: cartoonish or whimsical">Cartoonish</button>
+                <button type="button" class="label-update label-area-update" id="label-update" disabled>Update</button>
+            </div>
         </div>
+    </div>
+    <div id="showcase-overlay" class="showcase-overlay" hidden>
+        <table class="showcase-card" id="showcase-card">
+            <thead>
+                <tr>
+                    <th>
+                        <p class="showcase-kicker" id="showcase-kicker"></p>
+                        <h2 class="showcase-title" id="showcase-title"></h2>
+                    </th>
+                    <th class="showcase-close-cell">
+                        <button type="button" class="showcase-close" id="showcase-close" aria-label="Close preview">×</button>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="2" class="showcase-inspect-cell">
+                        <div class="showcase-inspect" id="showcase-inspect" role="img" aria-label="Skin inspect">
+                            <img id="showcase-image" alt="">
+                            <video id="showcase-video" hidden playsinline controls></video>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="showcase-variants-cell">
+                        <div class="showcase-chromas" id="showcase-chromas"></div>
+                    </td>
+                    <td class="showcase-preview-cell">
+                        <button type="button" class="showcase-play" id="showcase-play" hidden aria-label="Play preview">
+                            <svg class="icon-play" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M5 3.2v9.6L13 8z" fill="currentColor"></path>
+                            </svg>
+                            <svg class="icon-pause" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M4 3.5h3v9H4zm5 0h3v9H9z" fill="currentColor"></path>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="showcase-strip-cell">
+                        <div class="showcase-strip" id="showcase-strip"></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
     <script src="./app.js"></script>
 </body>

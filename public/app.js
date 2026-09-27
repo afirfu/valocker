@@ -76,6 +76,16 @@ const usernameTitle = document.getElementById("username-title");
 const saveLockerBtn = document.getElementById("save-locker");
 const logoutBtn = document.getElementById("logout-btn");
 const exportBtn = document.getElementById("export-docx");
+const showcaseOverlay = document.getElementById("showcase-overlay");
+const showcaseKicker = document.getElementById("showcase-kicker");
+const showcaseTitle = document.getElementById("showcase-title");
+const showcaseClose = document.getElementById("showcase-close");
+const showcaseInspect = document.getElementById("showcase-inspect");
+const showcaseImage = document.getElementById("showcase-image");
+const showcaseVideo = document.getElementById("showcase-video");
+const showcaseChromas = document.getElementById("showcase-chromas");
+const showcasePlay = document.getElementById("showcase-play");
+const showcaseStrip = document.getElementById("showcase-strip");
 const EXPORT_SOURCES = new Set(["collection", "battlepass", "limited", "agent"]);
 const APP_ORIGIN = "http://127.0.0.1:4173";
 
@@ -112,7 +122,11 @@ const LABEL_FAMILIES = {
   whimsical: "yellow",
   cartoonish: "yellow",
 };
-let labelDraft = { pickId: "", color: "", slant: false, bold: false };
+function emptyLabel(pickId = "") {
+  return { pickId, color: "", slant: false, bold: false, underline: false };
+}
+
+let labelDraft = emptyLabel();
 let labelling = false;
 let searching = false;
 let currentUser = null;
@@ -295,14 +309,14 @@ async function loadPicks() {
   }
   for (const [key, raw] of Object.entries(data.labels || {})) {
     const label = normalizeLabel(raw);
-    if (label.color || label.slant || label.bold) lockerLabels.set(key, label);
+    if (label.color || label.slant || label.bold || label.underline) lockerLabels.set(key, label);
   }
   rememberSavedPicks();
 }
 
 function normalizeLabel(raw) {
   const color = LABEL_COLORS[raw?.color] ? raw.color : "";
-  return { color, slant: Boolean(raw?.slant), bold: Boolean(raw?.bold) };
+  return { color, slant: Boolean(raw?.slant), bold: Boolean(raw?.bold), underline: Boolean(raw?.underline) };
 }
 
 function labelFamily(color) {
@@ -329,7 +343,13 @@ function labelsMatchSaved() {
   if (lockerLabels.size !== lastSavedLabels.size) return false;
   for (const [key, label] of lockerLabels) {
     const saved = lastSavedLabels.get(key);
-    if (!saved || saved.color !== label.color || saved.slant !== label.slant || saved.bold !== label.bold) {
+    if (
+      !saved ||
+      saved.color !== label.color ||
+      saved.slant !== label.slant ||
+      saved.bold !== label.bold ||
+      saved.underline !== label.underline
+    ) {
       return false;
     }
   }
@@ -400,6 +420,7 @@ function buildExportGroups() {
             color: label?.color || "",
             slant: Boolean(label?.slant),
             bold: Boolean(label?.bold),
+            underline: Boolean(label?.underline),
           };
         }),
       };
@@ -961,6 +982,253 @@ function collectionFamily(name) {
   return (name || "").replace(/\s*\(\d+\.0\)\s*$/i, "").trim().toLowerCase();
 }
 
+let showcaseByKey = new Map();
+let showcaseByFamily = new Map();
+const showcaseInspectState = { x: 0, y: 0, scale: 1, drag: false, px: 0, py: 0, ox: 0, oy: 0 };
+let showcaseCurrent = null;
+let showcaseOverlayTimer = 0;
+let showcaseStripTarget = 0;
+let showcaseStripRaf = 0;
+
+function tickShowcaseStrip() {
+  if (!showcaseStrip) {
+    showcaseStripRaf = 0;
+    return;
+  }
+  const current = showcaseStrip.scrollLeft;
+  const next = current + (showcaseStripTarget - current) * 0.16;
+  if (Math.abs(showcaseStripTarget - next) < 0.5) {
+    showcaseStrip.scrollLeft = showcaseStripTarget;
+    showcaseStripRaf = 0;
+    return;
+  }
+  showcaseStrip.scrollLeft = next;
+  showcaseStripRaf = requestAnimationFrame(tickShowcaseStrip);
+}
+
+function nudgeShowcaseStrip(delta) {
+  if (!showcaseStrip) return;
+  const max = Math.max(0, showcaseStrip.scrollWidth - showcaseStrip.clientWidth);
+  showcaseStripTarget = Math.max(0, Math.min(max, showcaseStripTarget + delta));
+  if (!showcaseStripRaf) showcaseStripRaf = requestAnimationFrame(tickShowcaseStrip);
+}
+
+function scrollShowcaseStripTo(tile) {
+  if (!showcaseStrip || !tile) return;
+  const left = tile.offsetLeft - (showcaseStrip.clientWidth - tile.offsetWidth) / 2;
+  const max = Math.max(0, showcaseStrip.scrollWidth - showcaseStrip.clientWidth);
+  showcaseStripTarget = Math.max(0, Math.min(max, left));
+  if (!showcaseStripRaf) showcaseStripRaf = requestAnimationFrame(tickShowcaseStrip);
+}
+
+function sequelWaveFromLabel(label) {
+  const match = (label || "").match(/\((\d+)\.0\)\s*$/);
+  return match ? Number(match[1]) : 1;
+}
+
+function skinPreviewAssets(skin) {
+  const chromas = (skin.chromas || []).filter((chroma) => chroma.fullRender || chroma.swatch || chroma.displayIcon);
+  const videos = [...(skin.chromas || []), ...(skin.levels || [])].map((item) => item.streamedVideo).filter(Boolean);
+  return {
+    render: chromas.find((chroma) => chroma.fullRender)?.fullRender || skin.displayIcon || "",
+    wallpaper: skin.wallpaper || "",
+    chromas,
+    video: videos[0] || "",
+  };
+}
+
+function rebuildShowcaseIndex() {
+  showcaseByKey = new Map();
+  showcaseByFamily = new Map();
+  if (!lockerCatalog) return;
+  const { weapons, tiers, themes } = lockerCatalog;
+  const tierByUuid = new Map(tiers.map((tier) => [tier.uuid, tier]));
+  const themeByUuid = new Map(themes.map((theme) => [theme.uuid, theme]));
+  const sequelThemes = buildSequelIndex(weapons, themeByUuid);
+
+  for (const weapon of weapons) {
+    if (weapon.category === MELEE_CATEGORY) continue;
+    for (const skin of weapon.skins || []) {
+      if (!skin.contentTierUuid || skin.displayName === "Random Favorite Skin") continue;
+      if (!bucketForSkin(skin, tierByUuid)) continue;
+      const label = displayNameForSkin(skin, weapon.displayName, sequelThemes, themeByUuid);
+      if (!label) continue;
+      const assets = skinPreviewAssets(skin);
+      const item = {
+        key: `${weapon.uuid}:${label}`,
+        weaponUuid: weapon.uuid,
+        weaponName: weapon.displayName,
+        label,
+        family: collectionFamily(label),
+        wave: sequelWaveFromLabel(label),
+        ...assets,
+      };
+      showcaseByKey.set(item.key, item);
+      if (!showcaseByFamily.has(item.family)) showcaseByFamily.set(item.family, []);
+      showcaseByFamily.get(item.family).push(item);
+    }
+  }
+
+  for (const items of showcaseByFamily.values()) {
+    items.sort((a, b) => {
+      const aIndex = tableWeaponIndex(a.weaponName);
+      const bIndex = tableWeaponIndex(b.weaponName);
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      if (a.wave !== b.wave) return a.wave - b.wave;
+      return compareNames(a.label, b.label);
+    });
+  }
+}
+
+function tableWeaponIndex(name) {
+  const index = WEAPON_ORDER.indexOf(name);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function lockerWeaponsInTableOrder() {
+  if (!lockerCatalog) return [];
+  return groupedGuns(lockerCatalog.weapons).flatMap((group) => group.weapons);
+}
+
+function familySkinForWeapon(familyItems, weapon, current) {
+  const matches = familyItems.filter((entry) => entry.weaponUuid === weapon.uuid);
+  if (!matches.length) return null;
+  return matches.find((entry) => entry.key === current.key)
+    || matches.find((entry) => entry.wave === current.wave)
+    || matches[0];
+}
+
+function resetShowcaseInspect() {
+  showcaseInspectState.x = 0;
+  showcaseInspectState.y = 0;
+  showcaseInspectState.scale = 1;
+  showcaseInspectState.drag = false;
+  applyShowcaseInspect();
+}
+
+function applyShowcaseInspect() {
+  if (!showcaseImage) return;
+  const { x, y, scale } = showcaseInspectState;
+  showcaseImage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+}
+
+function setShowcasePlayState(playing) {
+  if (!showcasePlay) return;
+  showcasePlay.classList.toggle("is-playing", playing);
+  showcasePlay.setAttribute("aria-label", playing ? "Back to inspect" : "Play preview");
+}
+
+function stopShowcaseVideo() {
+  if (!showcaseVideo) return;
+  showcaseVideo.pause();
+  showcaseVideo.removeAttribute("src");
+  showcaseVideo.load();
+  showcaseVideo.hidden = true;
+  showcaseInspect?.classList.remove("is-playing");
+  if (showcaseImage) showcaseImage.hidden = false;
+  setShowcasePlayState(false);
+}
+
+function paintShowcase(item) {
+  if (!item || !showcaseOverlay) return;
+  showcaseCurrent = item;
+  showcaseKicker.textContent = item.weaponName;
+  showcaseTitle.textContent = item.label;
+  showcaseImage.src = item.render;
+  showcaseImage.alt = `${item.label} ${item.weaponName}`;
+  showcaseImage.hidden = false;
+  stopShowcaseVideo();
+  resetShowcaseInspect();
+
+  const extraChromas = item.chromas.filter((chroma, index) => index > 0 && (chroma.fullRender || chroma.swatch));
+  showcaseChromas.replaceChildren();
+  if (extraChromas.length) {
+    const chips = [{ fullRender: item.render, swatch: item.chromas[0]?.swatch || "", displayName: "Default" }, ...extraChromas];
+    for (const [index, chroma] of chips.entries()) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "showcase-chroma";
+      button.title = chroma.displayName || `Variant ${index + 1}`;
+      if (chroma.swatch) button.style.backgroundImage = `url("${chroma.swatch}")`;
+      button.classList.toggle("is-on", index === 0);
+      button.addEventListener("click", () => {
+        for (const chip of showcaseChromas.children) chip.classList.remove("is-on");
+        button.classList.add("is-on");
+        stopShowcaseVideo();
+        showcaseImage.src = chroma.fullRender || item.render;
+        resetShowcaseInspect();
+      });
+      showcaseChromas.append(button);
+    }
+  }
+
+  showcasePlay.hidden = !item.video;
+  setShowcasePlayState(false);
+  const family = showcaseByFamily.get(item.family) || [item];
+  showcaseStrip.replaceChildren();
+  for (const weapon of lockerWeaponsInTableOrder()) {
+    const entry = familySkinForWeapon(family, weapon, item);
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "showcase-tile";
+    const media = document.createElement("span");
+    media.className = "showcase-tile-media";
+    const caption = document.createElement("span");
+    caption.className = "showcase-tile-name";
+    if (!entry) {
+      tile.classList.add("is-empty");
+      tile.disabled = true;
+      const mark = document.createElement("span");
+      mark.className = "showcase-tile-x";
+      mark.setAttribute("aria-hidden", "true");
+      media.append(mark);
+      caption.textContent = weapon.displayName;
+    } else {
+      tile.classList.toggle("is-on", entry.key === item.key);
+      const img = document.createElement("img");
+      img.src = entry.render;
+      img.alt = "";
+      media.append(img);
+      caption.textContent = entry.wave > 1 ? `${entry.weaponName} (${entry.wave}.0)` : entry.weaponName;
+      tile.addEventListener("click", () => paintShowcase(entry));
+    }
+    tile.append(media, caption);
+    showcaseStrip.append(tile);
+  }
+  scrollShowcaseStripTo(showcaseStrip.querySelector(".is-on"));
+}
+
+function openShowcase(item) {
+  if (!item || !showcaseOverlay) return;
+  window.clearTimeout(showcaseOverlayTimer);
+  showcaseOverlay.hidden = false;
+  document.body.classList.add("is-showcasing");
+  paintShowcase(item);
+  void showcaseOverlay.offsetWidth;
+  showcaseOverlay.classList.add("is-on");
+}
+
+function closeShowcase() {
+  if (!showcaseOverlay) return;
+  const wasOpen = showcaseOverlay.classList.contains("is-on") || !showcaseOverlay.hidden;
+  showcaseOverlay.classList.remove("is-on");
+  document.body.classList.remove("is-showcasing");
+  stopShowcaseVideo();
+  showcaseCurrent = null;
+  window.clearTimeout(showcaseOverlayTimer);
+  if (wasOpen && !showcaseOverlay.hidden) {
+    showcaseOverlayTimer = window.setTimeout(() => {
+      if (!showcaseOverlay.classList.contains("is-on")) showcaseOverlay.hidden = true;
+    }, 400);
+  } else {
+    showcaseOverlay.hidden = true;
+  }
+}
+
+function showcaseItemForHit(weaponUuid, label) {
+  return showcaseByKey.get(`${weaponUuid}:${label}`) || null;
+}
+
 function claimedCollectionsByWeapon() {
   const claimed = new Map();
   for (const wrap of document.querySelectorAll(".skin-select")) {
@@ -1001,6 +1269,8 @@ function syncCollectionLocks() {
 }
 
 function rarityCaption(bucket) {
+  if (bucket === "premiumFinisher") return "Premium (wf)";
+  if (bucket === "premiumNoFinisher") return "Premium (wof)";
   const column = RARITY_COLUMNS[BUCKETS.indexOf(bucket)];
   return column ? `${column.label} ${column.finisher}` : bucket;
 }
@@ -1014,6 +1284,7 @@ function applySkinLabel(wrap) {
   wrap.classList.toggle("is-labeled", Boolean(pastel));
   wrap.classList.toggle("is-slanted", Boolean(label?.slant && wrap.dataset.value));
   wrap.classList.toggle("is-bought", Boolean(label?.bold && wrap.dataset.value));
+  wrap.classList.toggle("is-underlined", Boolean(label?.underline && wrap.dataset.value));
   if (pastel) wrap.style.setProperty("--color", pastel);
   else wrap.style.removeProperty("--color");
 }
@@ -1039,19 +1310,128 @@ function showLabelToast() {
   showAppToast("Click a selected skin to label it.");
 }
 
+function labelGridItems() {
+  return labelEditor ? [...labelEditor.querySelectorAll(".label-grid > *")] : [];
+}
+
+function labelCellFromSkin(el) {
+  const dx = labelSkinEl.offsetLeft + labelSkinEl.offsetWidth / 2 - (el.offsetLeft + el.offsetWidth / 2);
+  const dy = labelSkinEl.offsetTop + labelSkinEl.offsetHeight / 2 - (el.offsetTop + el.offsetHeight / 2);
+  const dist = Math.abs(dx) / Math.max(el.offsetWidth, 1) + Math.abs(dy) / Math.max(el.offsetHeight, 1);
+  return { dx, dy, dist };
+}
+
+function labelOriginFromSkin(el) {
+  const ox = ((labelSkinEl.offsetLeft + labelSkinEl.offsetWidth / 2) - el.offsetLeft) / Math.max(el.offsetWidth, 1) * 100;
+  const oy = ((labelSkinEl.offsetTop + labelSkinEl.offsetHeight / 2) - el.offsetTop) / Math.max(el.offsetHeight, 1) * 100;
+  return `${ox}% ${oy}%`;
+}
+
+function setLabelMotion(on) {
+  labelEditor?.classList.toggle("is-motion", on);
+}
+
+function pileLabelCells() {
+  setLabelMotion(true);
+  for (const el of labelGridItems()) {
+    if (el === labelSkinEl) {
+      el.style.transition = "none";
+      el.style.transitionDelay = "0s";
+      el.style.transformOrigin = "center";
+      el.style.transform = "none";
+      el.style.opacity = "1";
+      continue;
+    }
+    el.style.transition = "none";
+    el.style.transitionDelay = "0s";
+    el.style.transformOrigin = labelOriginFromSkin(el);
+    el.style.transform = "scale(0.2)";
+    el.style.opacity = "0.2";
+  }
+}
+
+function labelMotionEase(move, fade) {
+  return `transform ${move}, opacity ${fade}, background-color 0.45s ease, font-weight 0.45s ease, color 0.45s ease`;
+}
+
+function growLabelCells() {
+  const ease = labelMotionEase("0.55s cubic-bezier(0.22, 1, 0.36, 1)", "0.35s ease");
+  for (const el of labelGridItems()) {
+    if (el === labelSkinEl) continue;
+    const { dist } = labelCellFromSkin(el);
+    el.style.transformOrigin = labelOriginFromSkin(el);
+    el.style.transition = ease;
+    el.style.transitionDelay = `${dist * 45}ms`;
+    el.style.transform = "scale(1)";
+    el.style.opacity = "1";
+  }
+  window.setTimeout(() => {
+    if (!labelOverlay?.classList.contains("is-on")) return;
+    for (const el of labelGridItems()) {
+      if (el === labelSkinEl) continue;
+      el.style.transform = "";
+      el.style.transformOrigin = "";
+      el.style.opacity = "";
+      el.style.transition = "";
+      el.style.transitionDelay = "";
+    }
+    setLabelMotion(false);
+  }, 780);
+}
+
+function foldLabelCells() {
+  setLabelMotion(true);
+  const ease = labelMotionEase("0.45s cubic-bezier(0.4, 0, 0.2, 1)", "0.3s ease");
+  let maxDist = 0;
+  const packed = labelGridItems().filter((el) => el !== labelSkinEl).map((el) => {
+    const pack = labelCellFromSkin(el);
+    if (pack.dist > maxDist) maxDist = pack.dist;
+    return { el, ...pack };
+  });
+  for (const { el, dist } of packed) {
+    el.style.transformOrigin = labelOriginFromSkin(el);
+    el.style.transition = ease;
+    el.style.transitionDelay = `${(maxDist - dist) * 30}ms`;
+    el.style.transform = "scale(0.2)";
+    el.style.opacity = "0.2";
+  }
+}
+
+function clearLabelCellMotion() {
+  setLabelMotion(false);
+  for (const el of labelGridItems()) {
+    el.style.transform = "";
+    el.style.transformOrigin = "";
+    el.style.opacity = "";
+    el.style.transition = "";
+    el.style.transitionDelay = "";
+  }
+}
+
+function setLabelScrollLock(on) {
+  document.body.classList.toggle("is-label-open", on);
+}
+
 function closeLabelWindows() {
   if (!labelOverlay) return;
   const wasOpen = labelOverlay.classList.contains("is-on") || !labelOverlay.hidden;
   labelOverlay.classList.remove("is-on");
+  if (wasOpen && !labelOverlay.hidden) foldLabelCells();
   window.clearTimeout(labelOverlayTimer);
   if (wasOpen && !labelOverlay.hidden) {
     labelOverlayTimer = window.setTimeout(() => {
-      if (!labelOverlay.classList.contains("is-on")) labelOverlay.hidden = true;
-    }, 400);
+      if (!labelOverlay.classList.contains("is-on")) {
+        labelOverlay.hidden = true;
+        clearLabelCellMotion();
+        setLabelScrollLock(false);
+      }
+    }, 720);
   } else {
     labelOverlay.hidden = true;
+    clearLabelCellMotion();
+    setLabelScrollLock(false);
   }
-  labelDraft = { pickId: "", color: "", slant: false, bold: false };
+  labelDraft = emptyLabel();
 }
 
 function setLabelling(on) {
@@ -1086,10 +1466,11 @@ function applySearchHits() {
     }
     const hit = hasQuery ? matchSkinName(wrap._searchNames || [], query) : "";
     wrap.classList.toggle("is-search-hit", Boolean(hit));
+    wrap._searchHit = hit;
     const button = wrap.querySelector(".skin-trigger");
     if (searching) {
       wrap.classList.toggle("is-selected", Boolean(hit));
-      wrap.classList.remove("is-labeled", "is-slanted", "is-bought");
+      wrap.classList.remove("is-labeled", "is-slanted", "is-bought", "is-underlined");
       wrap.style.removeProperty("--color");
       if (button) button.textContent = hit;
     } else if (button) {
@@ -1119,6 +1500,7 @@ function exitSearchMode() {
     searchClear.hidden = true;
     return;
   }
+  closeShowcase();
   searching = false;
   searchInput.value = "";
   document.body.classList.remove("is-searching", "has-search-query");
@@ -1148,6 +1530,25 @@ function paintLabelPreview() {
   labelSkinEl.style.color = pastel ? "#222" : "";
   labelSkinEl.style.fontStyle = labelDraft.slant ? "italic" : "normal";
   labelSkinEl.style.fontWeight = labelDraft.bold ? "700" : "400";
+  labelSkinEl.style.textDecoration = labelDraft.underline ? "underline" : "none";
+}
+
+function labelDraftDirty() {
+  if (!labelDraft.pickId) return false;
+  const current = lockerLabels.get(labelDraft.pickId) || emptyLabel();
+  const next = normalizeLabel(labelDraft);
+  return (
+    next.color !== (current.color || "") ||
+    next.slant !== Boolean(current.slant) ||
+    next.bold !== Boolean(current.bold) ||
+    next.underline !== Boolean(current.underline)
+  );
+}
+
+function syncLabelUpdate() {
+  if (!labelUpdateBtn) return;
+  const dirty = labelDraftDirty();
+  labelUpdateBtn.disabled = !dirty;
 }
 
 function paintLabelEditor() {
@@ -1156,12 +1557,14 @@ function paintLabelEditor() {
     const color = button.dataset.color;
     const slant = button.dataset.toggle === "slant";
     const bold = button.dataset.toggle === "bold";
+    const underline = button.dataset.toggle === "underline";
     let on = false;
     if (color) on = labelDraft.color === color;
     else if (slant) on = Boolean(labelDraft.slant);
     else if (bold) on = Boolean(labelDraft.bold);
+    else if (underline) on = Boolean(labelDraft.underline);
     button.classList.toggle("is-on", on);
-    if (slant || bold) button.setAttribute("aria-checked", on ? "true" : "false");
+    if (slant || bold || underline) button.setAttribute("aria-checked", on ? "true" : "false");
     if (color) {
       const locked = Boolean(labelFamily(color) && taken.has(labelFamily(color)));
       button.disabled = locked;
@@ -1172,21 +1575,62 @@ function paintLabelEditor() {
     }
   }
   paintLabelPreview();
+  syncLabelUpdate();
+}
+
+function labelOrientation(wrap) {
+  const col = Math.max(0, BUCKETS.indexOf(wrap.dataset.bucket));
+  const guns = lockerWeaponsInTableOrder();
+  let row = guns.findIndex((gun) => gun.uuid === wrap.dataset.weapon);
+  if (row < 0) row = 0;
+  const growRight = col < 2;
+  const growDown = row < 10;
+  if (growRight && growDown) return "rd";
+  if (growRight && !growDown) return "ru";
+  if (!growRight && growDown) return "ld";
+  return "lu";
+}
+
+function placeLabelWindow(wrap) {
+  if (!labelEditor) return;
+  const rect = wrap.getBoundingClientRect();
+  const width = Math.max(rect.width, 1);
+  const height = Math.max(rect.height, 1);
+  const orient = labelOrientation(wrap);
+  const left = orient === "ld" || orient === "lu" ? rect.right - width * 3 : rect.left;
+  const top = orient === "ld" || orient === "rd" ? rect.top : rect.bottom - height * 5;
+  labelEditor.dataset.orient = orient;
+  labelEditor.style.setProperty("--label-cell-w", `${width}px`);
+  labelEditor.style.setProperty("--label-cell-h", `${height}px`);
+  labelEditor.style.left = `${left}px`;
+  labelEditor.style.top = `${top}px`;
 }
 
 function openLabelEditor(wrap) {
   const pickId = wrap.dataset.pick;
   if (!pickId || !wrap.dataset.value) return;
-  const current = lockerLabels.get(pickId) || { color: "", slant: false, bold: false };
-  labelDraft = { pickId, color: current.color, slant: current.slant, bold: current.bold };
+  const current = lockerLabels.get(pickId) || emptyLabel();
+  labelDraft = {
+    pickId,
+    color: current.color,
+    slant: Boolean(current.slant),
+    bold: Boolean(current.bold),
+    underline: Boolean(current.underline),
+  };
   labelGunEl.textContent = wrap.dataset.weaponName || "";
   labelRarityEl.textContent = rarityCaption(wrap.dataset.bucket);
   labelSkinEl.textContent = wrap.dataset.value;
   window.clearTimeout(labelOverlayTimer);
-  labelOverlay.hidden = false;
+  setLabelScrollLock(true);
+  placeLabelWindow(wrap);
   paintLabelEditor();
-  void labelOverlay.offsetWidth;
+  labelOverlay.hidden = false;
+  pileLabelCells();
+  void labelEditor.offsetWidth;
+  placeLabelWindow(wrap);
+  pileLabelCells();
   labelOverlay.classList.add("is-on");
+  requestAnimationFrame(() => requestAnimationFrame(growLabelCells));
 }
 
 function createSelect(options, pickId = "", weaponOrId = "", searchNames = null) {
@@ -1297,7 +1741,12 @@ function createSelect(options, pickId = "", weaponOrId = "", searchNames = null)
 
   button.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (searching) return;
+    if (searching) {
+      if (wrap.classList.contains("is-search-hit") && wrap._searchHit) {
+        openShowcase(showcaseItemForHit(wrap.dataset.weapon, wrap._searchHit));
+      }
+      return;
+    }
     if (labelling) {
       closeSkinMenu();
       if (wrap.dataset.value) openLabelEditor(wrap);
@@ -1388,6 +1837,7 @@ function renderRarityHeaders(tiers) {
 
 function renderLocker(weapons, tiers, themes, source, contracts = []) {
   lockerCatalog = { weapons, tiers, themes, source, contracts };
+  rebuildShowcaseIndex();
   paintLocker();
 }
 
@@ -1688,12 +2138,12 @@ searchClear?.addEventListener("click", (event) => {
 });
 labelUpdateBtn.addEventListener("click", (event) => {
   event.preventDefault();
-  if (!labelDraft.pickId) return;
+  if (labelUpdateBtn.disabled || !labelDraft.pickId || !labelDraftDirty()) return;
   const pickId = labelDraft.pickId;
   const next = normalizeLabel(labelDraft);
   if (next.color && takenColorFamilies(pickId).has(labelFamily(next.color))) next.color = "";
   closeLabelWindows();
-  if (next.color || next.slant || next.bold) lockerLabels.set(pickId, next);
+  if (next.color || next.slant || next.bold || next.underline) lockerLabels.set(pickId, next);
   else lockerLabels.delete(pickId);
   requestAnimationFrame(() => {
     applyAllSkinLabels();
@@ -1709,11 +2159,89 @@ labelEditor.addEventListener("click", (event) => {
     labelDraft.slant = !labelDraft.slant;
   } else if (button.dataset.toggle === "bold") {
     labelDraft.bold = !labelDraft.bold;
+  } else if (button.dataset.toggle === "underline") {
+    labelDraft.underline = !labelDraft.underline;
   }
   paintLabelEditor();
 });
 labelOverlay.addEventListener("click", (event) => {
   if (event.target === labelOverlay) closeLabelWindows();
+});
+showcaseClose?.addEventListener("click", (event) => {
+  event.preventDefault();
+  closeShowcase();
+});
+showcaseOverlay?.addEventListener("click", (event) => {
+  if (event.target === showcaseOverlay) closeShowcase();
+});
+showcasePlay?.addEventListener("click", () => {
+  if (!showcaseCurrent?.video || !showcaseVideo) return;
+  if (!showcaseVideo.hidden) {
+    stopShowcaseVideo();
+    return;
+  }
+  showcaseImage.hidden = true;
+  showcaseVideo.hidden = false;
+  showcaseInspect.classList.add("is-playing");
+  showcaseVideo.src = showcaseCurrent.video;
+  setShowcasePlayState(true);
+  showcaseVideo.play();
+});
+showcaseOverlay?.addEventListener("wheel", (event) => {
+  if (event.target.closest(".showcase-strip")) {
+    event.preventDefault();
+    nudgeShowcaseStrip(event.deltaY + event.deltaX);
+    return;
+  }
+  if (event.target.closest(".showcase-inspect") && showcaseVideo?.hidden) return;
+  event.preventDefault();
+}, { passive: false });
+showcaseInspect?.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("video")) return;
+  if (event.button !== 0 || (showcaseVideo && !showcaseVideo.hidden)) return;
+  showcaseInspectState.drag = true;
+  showcaseInspectState.px = event.clientX;
+  showcaseInspectState.py = event.clientY;
+  showcaseInspectState.ox = showcaseInspectState.x;
+  showcaseInspectState.oy = showcaseInspectState.y;
+  showcaseInspect.classList.add("is-dragging");
+  showcaseInspect.setPointerCapture(event.pointerId);
+});
+showcaseInspect?.addEventListener("pointermove", (event) => {
+  if (!showcaseInspectState.drag) return;
+  showcaseInspectState.x = showcaseInspectState.ox + (event.clientX - showcaseInspectState.px);
+  showcaseInspectState.y = showcaseInspectState.oy + (event.clientY - showcaseInspectState.py);
+  applyShowcaseInspect();
+});
+function endShowcaseDrag(event) {
+  if (!showcaseInspectState.drag) return;
+  showcaseInspectState.drag = false;
+  showcaseInspect.classList.remove("is-dragging");
+  try {
+    showcaseInspect.releasePointerCapture(event.pointerId);
+  } catch {
+    /* ignore */
+  }
+}
+showcaseInspect?.addEventListener("pointerup", endShowcaseDrag);
+showcaseInspect?.addEventListener("pointercancel", endShowcaseDrag);
+showcaseInspect?.addEventListener("wheel", (event) => {
+  if (showcaseVideo && !showcaseVideo.hidden) return;
+  event.preventDefault();
+  const next = showcaseInspectState.scale * (event.deltaY < 0 ? 1.12 : 0.9);
+  showcaseInspectState.scale = Math.min(4, Math.max(1, next));
+  if (showcaseInspectState.scale === 1) {
+    showcaseInspectState.x = 0;
+    showcaseInspectState.y = 0;
+  }
+  applyShowcaseInspect();
+}, { passive: false });
+showcaseInspect?.addEventListener("dblclick", () => {
+  if (showcaseVideo && !showcaseVideo.hidden) {
+    stopShowcaseVideo();
+    return;
+  }
+  resetShowcaseInspect();
 });
 
 document.addEventListener("click", (event) => {
@@ -1731,7 +2259,8 @@ document.addEventListener("keydown", (event) => {
     closeSkinMenu();
     closeFilterMenu();
     closeThemeMenu();
-    if (!labelOverlay.hidden) closeLabelWindows();
+    if (showcaseOverlay && !showcaseOverlay.hidden) closeShowcase();
+    else if (!labelOverlay.hidden) closeLabelWindows();
     else if (labelling) exitLabellingMode();
   }
 });

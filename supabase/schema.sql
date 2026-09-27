@@ -26,8 +26,11 @@ create table if not exists labels (
   color text not null default '',
   slant integer not null default 0,
   bold integer not null default 0,
+  underline integer not null default 0,
   primary key (user_id, pick_key)
 );
+
+alter table labels add column if not exists underline integer not null default 0;
 
 revoke all on table users, sessions, picks, labels from anon, authenticated;
 grant all on table users, sessions, picks, labels to service_role;

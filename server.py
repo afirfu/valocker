@@ -97,11 +97,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             color TEXT NOT NULL DEFAULT '',
             slant INTEGER NOT NULL DEFAULT 0,
             bold INTEGER NOT NULL DEFAULT 0,
+            underline INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (user_id, pick_key),
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """
     )
+    cols = table_columns(conn, "labels")
+    if cols and "underline" not in cols:
+        conn.execute("ALTER TABLE labels ADD COLUMN underline INTEGER NOT NULL DEFAULT 0")
 
 
 def legacy_owner_picks(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
@@ -422,9 +426,10 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                     color = ""
                 slant = 1 if raw.get("slant") else 0
                 bold = 1 if raw.get("bold") else 0
-                if not color and not slant and not bold:
+                underline = 1 if raw.get("underline") else 0
+                if not color and not slant and not bold and not underline:
                     continue
-                label_items.append((pick_key, color, slant, bold))
+                label_items.append((pick_key, color, slant, bold, underline))
         save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
         self.send_json({"ok": True})
 

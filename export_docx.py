@@ -139,7 +139,7 @@ APP = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 """
 
 
-def _run(text: str, *, bold: bool = False, italic: bool = False, font: str | None = None) -> str:
+def _run(text: str, *, bold: bool = False, italic: bool = False, underline: bool = False, font: str | None = None) -> str:
     rpr = []
     if font:
         rpr.append(f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}" w:cs="{font}"/>')
@@ -147,6 +147,8 @@ def _run(text: str, *, bold: bool = False, italic: bool = False, font: str | Non
         rpr.append("<w:b/><w:bCs/>")
     if italic:
         rpr.append("<w:i/><w:iCs/>")
+    if underline:
+        rpr.append('<w:u w:val="single"/>')
     props = f"<w:rPr>{''.join(rpr)}</w:rPr>" if rpr else ""
     space = ' xml:space="preserve"' if text[:1].isspace() or text[-1:].isspace() else ""
     return f"<w:r>{props}<w:t{space}>{escape(text)}</w:t></w:r>"
@@ -219,12 +221,13 @@ def _skin_cell(cell: dict) -> str:
     family = LABEL_FAMILY.get(str(cell.get("color") or ""), "")
     slant = bool(cell.get("slant"))
     bold = bool(cell.get("bold"))
+    underline = bool(cell.get("underline"))
     if not available:
         return _tc(0, _p(_run(NO_SKIN)), fill=EMPTY_FILL)  # width set by caller
     fill = LABEL_FILL.get(family)
     if not text:
         return _tc(0, _empty_p(), fill=fill)
-    return _tc(0, _p(_run(text, bold=bold, italic=slant), bold=bold, italic=slant), fill=fill)
+    return _tc(0, _p(_run(text, bold=bold, italic=slant, underline=underline), bold=bold, italic=slant), fill=fill)
 
 
 def _fix_width(cell_xml: str, width: int) -> str:
@@ -312,10 +315,11 @@ def sanitize_groups(raw: object) -> list[dict]:
                         "color": str(cell.get("color") or "")[:32],
                         "slant": bool(cell.get("slant")),
                         "bold": bool(cell.get("bold")),
+                        "underline": bool(cell.get("underline")),
                     }
                 )
             while len(cells) < 4:
-                cells.append({"text": "", "available": True, "color": "", "slant": False, "bold": False})
+                cells.append({"text": "", "available": True, "color": "", "slant": False, "bold": False, "underline": False})
             rows.append({"gun": str(row.get("gun") or "")[:40], "cells": cells})
         if rows:
             groups.append({"label": str(group.get("label") or "")[:40], "rows": rows})

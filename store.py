@@ -214,7 +214,10 @@ def delete_session(token: str) -> None:
 def load_locker(user_id: int) -> tuple[dict[str, str], dict[str, dict]]:
     if use_supabase():
         pick_rows = _sb_request("GET", "picks", f"user_id=eq.{user_id}&select=pick_key,skin_name")
-        label_rows = _sb_request("GET", "labels", f"user_id=eq.{user_id}&select=pick_key,color,slant,bold")
+        try:
+            label_rows = _sb_request("GET", "labels", f"user_id=eq.{user_id}&select=pick_key,color,slant,bold,underline")
+        except ValueError:
+            label_rows = _sb_request("GET", "labels", f"user_id=eq.{user_id}&select=pick_key,color,slant,bold")
     else:
         with _db_lock:
             conn = connect()
@@ -224,7 +227,7 @@ def load_locker(user_id: int) -> tuple[dict[str, str], dict[str, dict]]:
                     (user_id,),
                 ).fetchall()
                 label_rows = conn.execute(
-                    "SELECT pick_key, color, slant, bold FROM labels WHERE user_id = ?",
+                    "SELECT pick_key, color, slant, bold, underline FROM labels WHERE user_id = ?",
                     (user_id,),
                 ).fetchall()
             finally:
@@ -235,6 +238,7 @@ def load_locker(user_id: int) -> tuple[dict[str, str], dict[str, dict]]:
             "color": row["color"] or "",
             "slant": bool(row["slant"]),
             "bold": bool(row["bold"]),
+            "underline": bool(_as_dict(row).get("underline")),
         }
         for row in label_rows
     }
@@ -257,21 +261,23 @@ def save_locker(user_id: int, cleaned: list[tuple[str, str]], label_items: list[
         if replace_labels:
             _sb_request("DELETE", "labels", f"user_id=eq.{user_id}")
             if label_items:
-                _sb_request(
-                    "POST",
-                    "labels",
-                    body=[
-                        {
-                            "user_id": user_id,
-                            "pick_key": pick_key,
-                            "color": color,
-                            "slant": slant,
-                            "bold": bold,
-                        }
-                        for pick_key, color, slant, bold in label_items
-                    ],
-                    extra={"Prefer": "return=minimal"},
-                )
+                rows = [
+                    {
+                        "user_id": user_id,
+                        "pick_key": pick_key,
+                        "color": color,
+                        "slant": slant,
+                        "bold": bold,
+                        "underline": underline,
+                    }
+                    for pick_key, color, slant, bold, underline in label_items
+                ]
+                try:
+                    _sb_request("POST", "labels", body=rows, extra={"Prefer": "return=minimal"})
+                except ValueError:
+                    for row in rows:
+                        row.pop("underline", None)
+                    _sb_request("POST", "labels", body=rows, extra={"Prefer": "return=minimal"})
         return
     with _db_lock:
         conn = connect()
@@ -288,10 +294,10 @@ def save_locker(user_id: int, cleaned: list[tuple[str, str]], label_items: list[
                 conn.execute("DELETE FROM labels WHERE user_id = ?", (user_id,))
                 conn.executemany(
                     """
-                    INSERT INTO labels (user_id, pick_key, color, slant, bold)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO labels (user_id, pick_key, color, slant, bold, underline)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    [(user_id, pick_key, color, slant, bold) for pick_key, color, slant, bold in label_items],
+                    [(user_id, pick_key, color, slant, bold, underline) for pick_key, color, slant, bold, underline in label_items],
                 )
             conn.commit()
         finally:
