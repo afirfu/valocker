@@ -302,3 +302,92 @@ def save_locker(user_id: int, cleaned: list[tuple[str, str]], label_items: list[
             conn.commit()
         finally:
             conn.close()
+
+
+def sanitize_layout(raw: Any) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    categories: list[str] = []
+    cats_in = raw.get("categories")
+    if isinstance(cats_in, list):
+        for item in cats_in[:20]:
+            value = str(item or "").strip()
+            if value and value not in categories:
+                categories.append(value)
+    weapons: dict[str, list[str]] = {}
+    weapons_in = raw.get("weapons")
+    if isinstance(weapons_in, dict):
+        for key, value in list(weapons_in.items())[:20]:
+            category = str(key or "").strip()
+            if not category or not isinstance(value, list):
+                continue
+            uuids: list[str] = []
+            for item in value[:40]:
+                uid = str(item or "").strip()
+                if uid and uid not in uuids:
+                    uuids.append(uid)
+            weapons[category] = uuids
+    if not categories and not weapons:
+        return None
+    return {"categories": categories, "weapons": weapons}
+
+
+def load_layout(user_id: int) -> dict | None:
+    if use_supabase():
+        try:
+            rows = _sb_request("GET", "layouts", f"user_id=eq.{user_id}&select=payload")
+        except ValueError:
+            return None
+        if not rows:
+            return None
+        return sanitize_layout(rows[0].get("payload"))
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                row = conn.execute(
+                    "SELECT payload FROM layouts WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return None
+            if not row:
+                return None
+            try:
+                return sanitize_layout(json.loads(row["payload"]))
+            except (TypeError, json.JSONDecodeError):
+                return None
+        finally:
+            conn.close()
+
+
+def save_layout(user_id: int, payload: dict | None) -> None:
+    cleaned = sanitize_layout(payload)
+    if use_supabase():
+        try:
+            _sb_request("DELETE", "layouts", f"user_id=eq.{user_id}")
+            if cleaned:
+                _sb_request(
+                    "POST",
+                    "layouts",
+                    body={"user_id": user_id, "payload": cleaned},
+                    extra={"Prefer": "return=minimal"},
+                )
+        except ValueError:
+            return
+        return
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                conn.execute("DELETE FROM layouts WHERE user_id = ?", (user_id,))
+                if cleaned:
+                    conn.execute(
+                        "INSERT INTO layouts (user_id, payload) VALUES (?, ?)",
+                        (user_id, json.dumps(cleaned)),
+                    )
+                conn.commit()
+            except sqlite3.OperationalError:
+                return
+        finally:
+            conn.close()

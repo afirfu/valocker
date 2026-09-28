@@ -10,6 +10,7 @@ from io import BytesIO
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from export_docx import build_locker_docx, sanitize_groups
+from kill_audio import resolve_kill_audio
 from server import (
     COOKIE_NAME,
     ROOT,
@@ -23,7 +24,17 @@ from server import (
     utc_now,
     user_public,
 )
-from store import create_user, delete_session, find_user, load_locker, save_locker, user_exists
+from store import (
+    create_user,
+    delete_session,
+    find_user,
+    load_layout,
+    load_locker,
+    save_layout,
+    save_locker,
+    sanitize_layout,
+    user_exists,
+)
 
 app = Flask(__name__)
 init_db()
@@ -89,13 +100,19 @@ def api_identity():
     return jsonify({"exists": user_exists(username)})
 
 
+@app.get("/api/kill-audio")
+def api_kill_audio():
+    family = request.args.get("family") or ""
+    return jsonify({"urls": resolve_kill_audio(family)})
+
+
 @app.get("/api/picks")
 def api_get_picks():
     user = current_user()
     if not user:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     picks, labels = load_locker(user["id"])
-    return jsonify({"picks": picks, "labels": labels})
+    return jsonify({"picks": picks, "labels": labels, "layout": load_layout(user["id"])})
 
 
 @app.post("/api/register")
@@ -191,6 +208,8 @@ def api_save_picks():
                 continue
             label_items.append((pick_key, color, slant, bold, underline))
     save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
+    if "layout" in body:
+        save_layout(user["id"], sanitize_layout(body.get("layout")))
     return jsonify({"ok": True})
 
 

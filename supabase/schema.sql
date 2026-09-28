@@ -32,5 +32,10 @@ create table if not exists labels (
 
 alter table labels add column if not exists underline integer not null default 0;
 
-revoke all on table users, sessions, picks, labels from anon, authenticated;
-grant all on table users, sessions, picks, labels to service_role;
+create table if not exists layouts (
+  user_id bigint primary key references users (id) on delete cascade,
+  payload jsonb not null
+);
+
+revoke all on table users, sessions, picks, labels, layouts from anon, authenticated;
+grant all on table users, sessions, picks, labels, layouts to service_role;

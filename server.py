@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from export_docx import build_locker_docx, sanitize_groups
+from kill_audio import resolve_kill_audio
 from store import (
     _db_lock,
     connect,
@@ -23,8 +24,11 @@ from store import (
     create_user,
     delete_session,
     find_user,
+    load_layout,
     load_locker,
+    save_layout,
     save_locker,
+    sanitize_layout,
     use_supabase,
     user_exists,
     user_from_session,
@@ -101,6 +105,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (user_id, pick_key),
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS layouts (
+            user_id INTEGER PRIMARY KEY,
+            payload TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
         """
     )
     cols = table_columns(conn, "labels")
@@ -136,6 +146,7 @@ def rebuild_auth_tables(conn: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS users;
         DROP TABLE IF EXISTS picks;
         DROP TABLE IF EXISTS labels;
+        DROP TABLE IF EXISTS layouts;
         """
     )
     conn.execute("PRAGMA foreign_keys = ON")
@@ -319,7 +330,12 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Not logged in"}, HTTPStatus.UNAUTHORIZED)
                 return
             picks, labels = load_locker(user["id"])
-            self.send_json({"picks": picks, "labels": labels})
+            self.send_json({"picks": picks, "labels": labels, "layout": load_layout(user["id"])})
+            return
+        if parsed.path == "/api/kill-audio":
+            qs = parse_qs(parsed.query)
+            family = (qs.get("family") or [""])[0]
+            self.send_json({"urls": resolve_kill_audio(family)})
             return
         super().do_GET()
 
@@ -431,6 +447,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                     continue
                 label_items.append((pick_key, color, slant, bold, underline))
         save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
+        if "layout" in body:
+            save_layout(user["id"], sanitize_layout(body.get("layout")))
         self.send_json({"ok": True})
 
     def handle_export(self) -> None:

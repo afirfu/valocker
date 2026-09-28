@@ -79,12 +79,16 @@ const exportBtn = document.getElementById("export-docx");
 const showcaseOverlay = document.getElementById("showcase-overlay");
 const showcaseKicker = document.getElementById("showcase-kicker");
 const showcaseTitle = document.getElementById("showcase-title");
+const showcaseVariant = document.getElementById("showcase-variant");
 const showcaseClose = document.getElementById("showcase-close");
 const showcaseInspect = document.getElementById("showcase-inspect");
 const showcaseImage = document.getElementById("showcase-image");
 const showcaseVideo = document.getElementById("showcase-video");
 const showcaseChromas = document.getElementById("showcase-chromas");
 const showcasePlay = document.getElementById("showcase-play");
+const showcaseKill = document.getElementById("showcase-kill");
+const showcaseKillCount = document.getElementById("showcase-kill-count");
+const showcaseKillStatus = document.getElementById("showcase-kill-status");
 const showcaseStrip = document.getElementById("showcase-strip");
 const EXPORT_SOURCES = new Set(["collection", "battlepass", "limited", "agent"]);
 const APP_ORIGIN = "http://127.0.0.1:4173";
@@ -102,6 +106,9 @@ const lockerPicks = new Map();
 const lastSavedPicks = new Map();
 const lockerLabels = new Map();
 const lastSavedLabels = new Map();
+let lockerLayout = null;
+let lastSavedLayout = null;
+let lockerDrag = null;
 const LABEL_COLORS = {
   warpath: "#f5c6b8",
   beastly: "#f5c6b8",
@@ -129,6 +136,7 @@ function emptyLabel(pickId = "") {
 let labelDraft = emptyLabel();
 let labelling = false;
 let searching = false;
+let rearranging = false;
 let currentUser = null;
 let identityExists = null;
 let identityTimer = 0;
@@ -291,8 +299,10 @@ async function clearSession({ keepUsername = false } = {}) {
   lastSavedPicks.clear();
   lockerLabels.clear();
   lastSavedLabels.clear();
+  lastSavedLayout = null;
   exitLabellingMode();
   setLoggedOutUi({ keepUsername });
+  lockerLayout = loadLayoutLocal();
   paintLocker();
 }
 
@@ -311,6 +321,10 @@ async function loadPicks() {
     const label = normalizeLabel(raw);
     if (label.color || label.slant || label.bold || label.underline) lockerLabels.set(key, label);
   }
+  const serverLayout = sanitizeLayout(data.layout);
+  lockerLayout = serverLayout || loadLayoutLocal();
+  persistLayoutLocal();
+  lastSavedLayout = cloneLayout(serverLayout);
   rememberSavedPicks();
 }
 
@@ -361,7 +375,7 @@ function picksMatchSaved() {
   for (const [key, name] of lockerPicks) {
     if (lastSavedPicks.get(key) !== name) return false;
   }
-  return labelsMatchSaved();
+  return labelsMatchSaved() && layoutsEqual(lockerLayout, lastSavedLayout);
 }
 
 function rememberSavedPicks() {
@@ -428,11 +442,33 @@ function buildExportGroups() {
   }));
 }
 
+let exportArmed = false;
+let exportArmTimer = 0;
+
+function clearExportArm() {
+  exportArmed = false;
+  window.clearTimeout(exportArmTimer);
+}
+
+function askExportConfirm() {
+  exportArmed = true;
+  window.clearTimeout(exportArmTimer);
+  showAppToast("export saves into DOCX format?\nclick again to export", 4000);
+  exportArmTimer = window.setTimeout(clearExportArm, 4000);
+}
+
 async function exportLockerDocx() {
   if (!exportReady()) {
+    clearExportArm();
     showAppToast("please save current selection to use this function");
     return;
   }
+  if (!exportArmed) {
+    askExportConfirm();
+    return;
+  }
+  clearExportArm();
+  hideLabelToast();
   exportBtn.classList.add("is-off");
   exportBtn.setAttribute("aria-disabled", "true");
   try {
@@ -478,8 +514,10 @@ async function saveLocker() {
       body: JSON.stringify({
         picks: Object.fromEntries(lockerPicks),
         labels: Object.fromEntries(lockerLabels),
+        layout: lockerLayout,
       }),
     });
+    lastSavedLayout = cloneLayout(lockerLayout);
     rememberSavedPicks();
   } catch (error) {
     setFieldError(passwordInput, error.message);
@@ -729,6 +767,7 @@ function groupedGuns(weapons) {
     const key = weapon.category;
     if (!groups.has(key)) {
       groups.set(key, {
+        category: key,
         label: categoryLabel(weapon),
         rank: CATEGORY_RANK[weapon.category] ?? 99,
         weapons: [],
@@ -748,7 +787,280 @@ function groupedGuns(weapons) {
     });
   }
 
-  return [...groups.values()].sort((a, b) => a.rank - b.rank || compareNames(a.label, b.label));
+  return applyLockerLayout(
+    [...groups.values()].sort((a, b) => a.rank - b.rank || compareNames(a.label, b.label)),
+  );
+}
+
+function layoutStorageKey() {
+  const name = (currentUser?.username || currentUsername() || "").trim().toLowerCase();
+  return name ? `valocker-layout:${name}` : "valocker-layout";
+}
+
+function cloneLayout(layout) {
+  return layout ? JSON.parse(JSON.stringify(layout)) : null;
+}
+
+function layoutsEqual(a, b) {
+  return JSON.stringify(a || null) === JSON.stringify(b || null);
+}
+
+function sanitizeLayout(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const categories = [];
+  if (Array.isArray(raw.categories)) {
+    for (const item of raw.categories.slice(0, 20)) {
+      const value = String(item || "").trim();
+      if (value && !categories.includes(value)) categories.push(value);
+    }
+  }
+  const weapons = {};
+  if (raw.weapons && typeof raw.weapons === "object") {
+    for (const [key, list] of Object.entries(raw.weapons).slice(0, 20)) {
+      const category = String(key || "").trim();
+      if (!category || !Array.isArray(list)) continue;
+      const uuids = [];
+      for (const item of list.slice(0, 40)) {
+        const uuid = String(item || "").trim();
+        if (uuid && !uuids.includes(uuid)) uuids.push(uuid);
+      }
+      weapons[category] = uuids;
+    }
+  }
+  if (!categories.length && !Object.keys(weapons).length) return null;
+  return { categories, weapons };
+}
+
+function loadLayoutLocal() {
+  try {
+    return sanitizeLayout(JSON.parse(localStorage.getItem(layoutStorageKey()) || "null"));
+  } catch {
+    return null;
+  }
+}
+
+function persistLayoutLocal() {
+  try {
+    const key = layoutStorageKey();
+    if (lockerLayout) localStorage.setItem(key, JSON.stringify(lockerLayout));
+    else localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+}
+
+function applyLockerLayout(groups) {
+  if (!lockerLayout) return groups;
+  const byCategory = new Map(groups.map((group) => [group.category, group]));
+  const categories = [];
+  for (const category of lockerLayout.categories || []) {
+    if (byCategory.has(category) && !categories.includes(category)) categories.push(category);
+  }
+  for (const group of groups) {
+    if (!categories.includes(group.category)) categories.push(group.category);
+  }
+  const weaponsMap = lockerLayout.weapons || {};
+  return categories.map((category) => {
+    const group = byCategory.get(category);
+    const wanted = weaponsMap[category] || [];
+    const byId = new Map(group.weapons.map((weapon) => [weapon.uuid, weapon]));
+    const ordered = [];
+    for (const uuid of wanted) {
+      const weapon = byId.get(uuid);
+      if (weapon && !ordered.includes(weapon)) ordered.push(weapon);
+    }
+    for (const weapon of group.weapons) {
+      if (!ordered.includes(weapon)) ordered.push(weapon);
+    }
+    return { ...group, weapons: ordered };
+  });
+}
+
+function snapshotLayout() {
+  if (!lockerCatalog) return { categories: [], weapons: {} };
+  const groups = groupedGuns(lockerCatalog.weapons);
+  return {
+    categories: groups.map((group) => group.category),
+    weapons: Object.fromEntries(groups.map((group) => [group.category, group.weapons.map((weapon) => weapon.uuid)])),
+  };
+}
+
+function commitLayout(next) {
+  lockerLayout = sanitizeLayout(next);
+  persistLayoutLocal();
+  paintLocker();
+  syncSaveButton();
+}
+
+function resetLockerLayout() {
+  commitLayout(null);
+}
+
+function moveCategory(from, to, after) {
+  const layout = snapshotLayout();
+  const categories = layout.categories.filter((category) => category !== from);
+  let index = categories.indexOf(to);
+  if (index < 0) return;
+  if (after) index += 1;
+  categories.splice(index, 0, from);
+  commitLayout({ ...layout, categories });
+}
+
+function moveGun(category, from, to, after) {
+  const layout = snapshotLayout();
+  const list = (layout.weapons[category] || []).filter((uuid) => uuid !== from);
+  let index = list.indexOf(to);
+  if (index < 0) return;
+  if (after) index += 1;
+  list.splice(index, 0, from);
+  commitLayout({
+    ...layout,
+    weapons: { ...layout.weapons, [category]: list },
+  });
+}
+
+function categoryBlockRect(category) {
+  const escaped = CSS.escape(category);
+  const head = tableBody.querySelector(`td.rarity[data-category="${escaped}"]`);
+  const guns = tableBody.querySelectorAll(`td.gun[data-category="${escaped}"]`);
+  const last = guns[guns.length - 1];
+  const top = head?.getBoundingClientRect().top ?? guns[0]?.getBoundingClientRect().top ?? 0;
+  const bottom = last?.getBoundingClientRect().bottom ?? head?.getBoundingClientRect().bottom ?? 0;
+  return { top, bottom };
+}
+
+function dropAfterCategory(event, category) {
+  const { top, bottom } = categoryBlockRect(category);
+  return event.clientY > (top + bottom) / 2;
+}
+
+function dropAfterGun(event, cell) {
+  const rect = cell.getBoundingClientRect();
+  return event.clientY > rect.top + rect.height / 2;
+}
+
+function setRearranging(on) {
+  if (on) {
+    if (searching) exitSearchMode();
+    if (labelling) exitLabellingMode();
+  } else {
+    document.querySelector(".rearrange-ghost")?.remove();
+  }
+  rearranging = on;
+  document.body.classList.toggle("is-rearranging", on);
+  syncModeLocks();
+  if (on) {
+    closeSkinMenu();
+    closeFilterMenu();
+  }
+}
+
+function clearRearrangePreview() {
+  tableBody?.querySelectorAll("td").forEach((el) => {
+    el.style.transform = "";
+    el.classList.remove("is-rearrange-source");
+  });
+  document.querySelector(".rearrange-ghost")?.remove();
+}
+
+function exitRearrangeMode() {
+  clearRearrangePreview();
+  setRearranging(false);
+}
+
+function cacheRearrangeItems(kind, category) {
+  if (kind === "category") {
+    return [...tableBody.querySelectorAll("td.rarity[data-drag='category']")].map((el) => {
+      const rows = [...tableBody.querySelectorAll(`td.gun[data-category="${CSS.escape(el.dataset.category)}"]`)]
+        .map((gun) => gun.parentElement);
+      const last = rows[rows.length - 1]?.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      const bottom = last?.bottom ?? rect.bottom;
+      return { id: el.dataset.category, el, rows, top: rect.top, bottom, height: bottom - rect.top };
+    });
+  }
+  return [...tableBody.querySelectorAll(`td.gun[data-category="${CSS.escape(category)}"]`)].map((el) => {
+    const rect = el.getBoundingClientRect();
+    return { id: el.dataset.weapon, el, top: rect.top, bottom: rect.bottom, height: rect.height };
+  });
+}
+
+function insertIndexFromY(items, clientY) {
+  let hover = items.length - 1;
+  for (let i = 0; i < items.length; i += 1) {
+    if (clientY < (items[i].top + items[i].bottom) / 2) {
+      hover = i;
+      break;
+    }
+  }
+  return hover;
+}
+
+function applyRearrangePreview(insertIndex) {
+  if (!lockerDrag) return;
+  if (lockerDrag.insertIndex === insertIndex) return;
+  lockerDrag.insertIndex = insertIndex;
+  const { fromIndex, items } = lockerDrag;
+  const fromH = items[fromIndex].height;
+  items.forEach((item, i) => {
+    let dy = 0;
+    if (i !== fromIndex) {
+      if (fromIndex < insertIndex && i > fromIndex && i <= insertIndex) dy = -fromH;
+      else if (fromIndex > insertIndex && i >= insertIndex && i < fromIndex) dy = fromH;
+    }
+    item.el.style.transform = dy ? `translateY(${dy}px)` : "";
+    if (item.rows) {
+      for (const row of item.rows) {
+        for (const td of row.children) {
+          if (td === item.el) continue;
+          td.style.transform = dy ? `translateY(${dy}px)` : "";
+        }
+      }
+    }
+  });
+}
+
+function rearrangeTargetCell(event) {
+  const cell = event.target.closest?.("td[data-drag]");
+  if (!cell || !tableBody.contains(cell) || !lockerDrag) return null;
+  if (lockerDrag.kind === "category") {
+    return cell.dataset.drag === "category" ? cell : null;
+  }
+  if (cell.dataset.drag !== "gun" || cell.dataset.category !== lockerDrag.category) return null;
+  return cell;
+}
+
+function makeRearrangeGhost(cell) {
+  const ghost = document.createElement("div");
+  ghost.className = "rearrange-ghost";
+  ghost.textContent = cell.dataset.drag === "category"
+    ? cell.textContent
+    : (cell.querySelector(".gun-name")?.textContent || cell.textContent);
+  const rect = cell.getBoundingClientRect();
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  document.body.append(ghost);
+  return ghost;
+}
+
+function commitRearrange(drag) {
+  if (!drag || drag.insertIndex == null || drag.insertIndex === drag.fromIndex) return false;
+  if (drag.kind === "gun") {
+    const layout = snapshotLayout();
+    const list = [...(layout.weapons[drag.category] || [])];
+    const [item] = list.splice(drag.fromIndex, 1);
+    if (!item) return false;
+    list.splice(drag.insertIndex, 0, item);
+    commitLayout({ ...layout, weapons: { ...layout.weapons, [drag.category]: list } });
+    return true;
+  }
+  const layout = snapshotLayout();
+  const categories = [...layout.categories];
+  const [item] = categories.splice(drag.fromIndex, 1);
+  if (!item) return false;
+  categories.splice(drag.insertIndex, 0, item);
+  commitLayout({ ...layout, categories });
+  return true;
 }
 
 const croppedIcons = new Map();
@@ -827,6 +1139,10 @@ function syncSelectedState(wrap) {
 function createGunCell(weapon) {
   const gunCell = document.createElement("td");
   gunCell.className = "gun";
+  gunCell.draggable = true;
+  gunCell.dataset.drag = "gun";
+  gunCell.dataset.weapon = weapon.uuid;
+  gunCell.dataset.category = weapon.category;
 
   const swap = document.createElement("div");
   swap.className = "gun-swap";
@@ -841,6 +1157,7 @@ function createGunCell(weapon) {
     icon.className = "gun-icon";
     icon.alt = "";
     icon.decoding = "async";
+    icon.draggable = false;
     icon.src = iconSrc;
     icon.addEventListener("error", () => {
       const fallback = weapon.killStreamIcon || weapon.displayIcon;
@@ -984,11 +1301,16 @@ function collectionFamily(name) {
 
 let showcaseByKey = new Map();
 let showcaseByFamily = new Map();
-const showcaseInspectState = { x: 0, y: 0, scale: 1, drag: false, px: 0, py: 0, ox: 0, oy: 0 };
+const showcaseInspectState = { x: 0, y: 0, scale: 1, fit: 1, drag: false, px: 0, py: 0, ox: 0, oy: 0 };
 let showcaseCurrent = null;
 let showcaseOverlayTimer = 0;
 let showcaseStripTarget = 0;
 let showcaseStripRaf = 0;
+let showcaseKillIndex = 1;
+let showcaseKillAudio = null;
+let showcaseKillReady = false;
+let showcaseKillProbe = 0;
+let showcaseKillUrls = [];
 
 function tickShowcaseStrip() {
   if (!showcaseStrip) {
@@ -1098,18 +1420,143 @@ function familySkinForWeapon(familyItems, weapon, current) {
     || matches[0];
 }
 
+function chromaVariantLabel(displayName, index) {
+  if (index === 0) return "Default";
+  const text = String(displayName || "").replace(/\r/g, "\n");
+  const line = text.split("\n").map((part) => part.trim()).find((part) => /^variant\b/i.test(part));
+  const inline = text.match(/variant\s+\d+\b[^\n]*/i);
+  const raw = (line || inline?.[0] || "").replace(/\s+/g, " ").trim();
+  const clean = raw.replace(/^[(\s]+/, "").replace(/[)\s]+$/, "").trim();
+  return clean || `Variant ${index}`;
+}
+
+function setShowcaseVariant(label) {
+  if (showcaseVariant) showcaseVariant.textContent = label || "Default";
+}
+
+function stopShowcaseKill() {
+  if (showcaseKillAudio) {
+    showcaseKillAudio.pause();
+    showcaseKillAudio.removeAttribute("src");
+    showcaseKillAudio.load();
+    showcaseKillAudio = null;
+  }
+  showcaseKill?.classList.remove("is-busy");
+}
+
+function killCountLabel(index) {
+  return index >= 5 ? "5 kill or more" : `${index} kill`;
+}
+
+function paintShowcaseKillMeta(status, index = showcaseKillIndex) {
+  if (showcaseKillCount) {
+    showcaseKillCount.textContent = status === "fetched" ? killCountLabel(index) : "";
+  }
+  if (showcaseKillStatus) showcaseKillStatus.textContent = status;
+}
+
+function setShowcaseKillEnabled(on, index = showcaseKillIndex) {
+  if (!showcaseKill) return;
+  showcaseKill.disabled = !on;
+  showcaseKill.setAttribute("aria-label", on ? `Play ${killCountLabel(index)}` : "Kill sound unavailable");
+}
+
+function probeShowcaseKill(family) {
+  stopShowcaseKill();
+  showcaseKillIndex = 1;
+  showcaseKillReady = false;
+  showcaseKillUrls = [];
+  setShowcaseKillEnabled(false, 1);
+  paintShowcaseKillMeta("loading", 1);
+  if (!family || !showcaseKill) {
+    paintShowcaseKillMeta("no audio", 1);
+    return;
+  }
+  const token = ++showcaseKillProbe;
+  api(`/api/kill-audio?family=${encodeURIComponent(family)}`).then((data) => {
+    if (token !== showcaseKillProbe) return;
+    const urls = Array.isArray(data.urls) ? data.urls.filter(Boolean) : [];
+    showcaseKillUrls = urls;
+    showcaseKillReady = urls.length > 0;
+    setShowcaseKillEnabled(showcaseKillReady, 1);
+    paintShowcaseKillMeta(showcaseKillReady ? "fetched" : "no audio", 1);
+  }).catch(() => {
+    if (token !== showcaseKillProbe) return;
+    showcaseKillReady = false;
+    setShowcaseKillEnabled(false, 1);
+    paintShowcaseKillMeta("no audio", 1);
+  });
+}
+
+function playShowcaseKill() {
+  if (!showcaseKillReady || !showcaseKillUrls.length || !showcaseKill || showcaseKill.disabled) return;
+  stopShowcaseKill();
+  const max = showcaseKillUrls.length;
+  const n = ((showcaseKillIndex - 1) % max) + 1;
+  const audio = new Audio(showcaseKillUrls[n - 1]);
+  showcaseKillAudio = audio;
+  showcaseKill.disabled = true;
+  showcaseKill.classList.add("is-busy");
+  paintShowcaseKillMeta("fetched", n);
+  audio.addEventListener("ended", () => {
+    if (showcaseKillAudio !== audio) return;
+    showcaseKillAudio = null;
+    showcaseKillIndex = n >= max ? 1 : n + 1;
+    showcaseKill.classList.remove("is-busy");
+    setShowcaseKillEnabled(showcaseKillReady, showcaseKillIndex);
+    paintShowcaseKillMeta(showcaseKillReady ? "fetched" : "no audio", showcaseKillIndex);
+  }, { once: true });
+  audio.addEventListener("error", () => {
+    if (showcaseKillAudio !== audio) return;
+    showcaseKillAudio = null;
+    showcaseKillReady = false;
+    showcaseKill.classList.remove("is-busy");
+    setShowcaseKillEnabled(false, showcaseKillIndex);
+    paintShowcaseKillMeta("no audio", showcaseKillIndex);
+  }, { once: true });
+  audio.play().catch(() => {
+    if (showcaseKillAudio !== audio) return;
+    showcaseKillAudio = null;
+    showcaseKill.classList.remove("is-busy");
+    setShowcaseKillEnabled(showcaseKillReady, showcaseKillIndex);
+    paintShowcaseKillMeta(showcaseKillReady ? "fetched" : "no audio", showcaseKillIndex);
+  });
+}
+
+function showcaseInspectFit() {
+  if (!showcaseImage || !showcaseInspect) return 1;
+  const width = showcaseImage.naturalWidth || 1;
+  const height = showcaseImage.naturalHeight || 1;
+  const box = showcaseInspect.getBoundingClientRect();
+  const availW = Math.max(box.width - 64, 1);
+  const availH = Math.max(box.height - 56, 1);
+  return Math.min(availW / width, availH / height);
+}
+
+function layoutShowcaseInspect() {
+  if (!showcaseImage?.naturalWidth) return;
+  showcaseInspectState.fit = showcaseInspectFit();
+  applyShowcaseInspect();
+}
+
 function resetShowcaseInspect() {
   showcaseInspectState.x = 0;
   showcaseInspectState.y = 0;
   showcaseInspectState.scale = 1;
   showcaseInspectState.drag = false;
-  applyShowcaseInspect();
+  layoutShowcaseInspect();
 }
 
 function applyShowcaseInspect() {
   if (!showcaseImage) return;
-  const { x, y, scale } = showcaseInspectState;
-  showcaseImage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  const { x, y, scale, fit } = showcaseInspectState;
+  const width = showcaseImage.naturalWidth;
+  const height = showcaseImage.naturalHeight;
+  if (width) {
+    showcaseImage.style.width = `${width}px`;
+    showcaseImage.style.height = `${height}px`;
+  }
+  showcaseImage.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${(fit || 1) * scale})`;
 }
 
 function setShowcasePlayState(playing) {
@@ -1134,11 +1581,15 @@ function paintShowcase(item) {
   showcaseCurrent = item;
   showcaseKicker.textContent = item.weaponName;
   showcaseTitle.textContent = item.label;
+  setShowcaseVariant("Default");
   showcaseImage.src = item.render;
   showcaseImage.alt = `${item.label} ${item.weaponName}`;
   showcaseImage.hidden = false;
   stopShowcaseVideo();
+  stopShowcaseKill();
   resetShowcaseInspect();
+  if (showcaseImage.complete && showcaseImage.naturalWidth) layoutShowcaseInspect();
+  probeShowcaseKill(item.family);
 
   const extraChromas = item.chromas.filter((chroma, index) => index > 0 && (chroma.fullRender || chroma.swatch));
   showcaseChromas.replaceChildren();
@@ -1148,12 +1599,15 @@ function paintShowcase(item) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "showcase-chroma";
-      button.title = chroma.displayName || `Variant ${index + 1}`;
+      const variantName = chromaVariantLabel(chroma.displayName, index);
+      button.title = variantName;
+      button.dataset.variant = variantName;
       if (chroma.swatch) button.style.backgroundImage = `url("${chroma.swatch}")`;
       button.classList.toggle("is-on", index === 0);
       button.addEventListener("click", () => {
         for (const chip of showcaseChromas.children) chip.classList.remove("is-on");
         button.classList.add("is-on");
+        setShowcaseVariant(variantName);
         stopShowcaseVideo();
         showcaseImage.src = chroma.fullRender || item.render;
         resetShowcaseInspect();
@@ -1214,6 +1668,10 @@ function closeShowcase() {
   showcaseOverlay.classList.remove("is-on");
   document.body.classList.remove("is-showcasing");
   stopShowcaseVideo();
+  stopShowcaseKill();
+  showcaseKillProbe += 1;
+  showcaseKillReady = false;
+  setShowcaseKillEnabled(false, 1);
   showcaseCurrent = null;
   window.clearTimeout(showcaseOverlayTimer);
   if (wasOpen && !showcaseOverlay.hidden) {
@@ -1298,12 +1756,12 @@ function hideLabelToast() {
   labelToast.classList.remove("is-on");
 }
 
-function showAppToast(message) {
+function showAppToast(message, ms = 2600) {
   hideLabelToast();
   labelToast.textContent = message;
   labelToast.hidden = false;
   requestAnimationFrame(() => labelToast.classList.add("is-on"));
-  labelToastTimer = window.setTimeout(hideLabelToast, 2600);
+  labelToastTimer = window.setTimeout(hideLabelToast, ms);
 }
 
 function showLabelToast() {
@@ -1434,13 +1892,20 @@ function closeLabelWindows() {
   labelDraft = emptyLabel();
 }
 
+function syncModeLocks() {
+  const locked = labelling || searching || rearranging;
+  sortEl.disabled = locked;
+  if (filterBtn) filterBtn.disabled = locked;
+  if (labelBtn) labelBtn.disabled = searching || rearranging;
+}
+
 function setLabelling(on) {
   if (on && searching) exitSearchMode();
+  if (on && rearranging) exitRearrangeMode();
   labelling = on;
   document.body.classList.toggle("is-labelling", on);
   labelBtn.setAttribute("aria-checked", on ? "true" : "false");
-  sortEl.disabled = on || searching;
-  if (filterBtn) filterBtn.disabled = on || searching;
+  syncModeLocks();
   if (on) closeFilterMenu();
 }
 
@@ -1484,12 +1949,11 @@ function applySearchHits() {
 function enterSearchMode() {
   if (searching) return;
   if (labelling) exitLabellingMode();
+  if (rearranging) exitRearrangeMode();
   searching = true;
   document.body.classList.add("is-searching");
   searchClear.hidden = false;
-  sortEl.disabled = true;
-  if (filterBtn) filterBtn.disabled = true;
-  if (labelBtn) labelBtn.disabled = true;
+  syncModeLocks();
   closeSkinMenu();
   closeFilterMenu();
   applySearchHits();
@@ -1505,9 +1969,7 @@ function exitSearchMode() {
   searchInput.value = "";
   document.body.classList.remove("is-searching", "has-search-query");
   searchClear.hidden = true;
-  sortEl.disabled = labelling;
-  if (filterBtn) filterBtn.disabled = labelling;
-  if (labelBtn) labelBtn.disabled = false;
+  syncModeLocks();
   applySearchHits();
 }
 
@@ -1866,6 +2328,9 @@ function paintLocker() {
         categoryCell.className = "rarity";
         categoryCell.rowSpan = group.weapons.length;
         categoryCell.textContent = group.label;
+        categoryCell.draggable = true;
+        categoryCell.dataset.drag = "category";
+        categoryCell.dataset.category = group.category;
         row.append(categoryCell);
       }
 
@@ -1935,6 +2400,7 @@ filterMenu?.addEventListener("change", syncFiltersFromMenu);
 paintFilterButton();
 
 async function loadLockerTable() {
+  if (!currentUser && lockerLayout === null) lockerLayout = loadLayoutLocal();
   if (lockerCatalog) {
     paintLocker();
     return;
@@ -2031,6 +2497,61 @@ identityForm.addEventListener("keydown", (event) => {
   if (event.target !== usernameInput && event.target !== passwordInput) return;
   event.preventDefault();
   identityForm.requestSubmit();
+});
+document.querySelector(".corner-guns")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  resetLockerLayout();
+});
+tableBody?.addEventListener("dragstart", (event) => {
+  const cell = event.target.closest("td[data-drag]");
+  if (!cell || !tableBody.contains(cell)) return;
+  const kind = cell.dataset.drag;
+  const category = cell.dataset.category || "";
+  const items = cacheRearrangeItems(kind, category);
+  const fromId = kind === "category" ? category : cell.dataset.weapon;
+  const fromIndex = items.findIndex((item) => item.id === fromId);
+  if (fromIndex < 0) return;
+  setRearranging(true);
+  cell.classList.add("is-rearrange-source");
+  const ghost = makeRearrangeGhost(cell);
+  lockerDrag = {
+    kind,
+    category,
+    weapon: cell.dataset.weapon || "",
+    fromIndex,
+    insertIndex: fromIndex,
+    items,
+    ghost,
+  };
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", kind);
+  const rect = cell.getBoundingClientRect();
+  event.dataTransfer.setDragImage(ghost, event.clientX - rect.left, event.clientY - rect.top);
+});
+tableBody?.addEventListener("dragend", () => {
+  lockerDrag = null;
+  if (rearranging) exitRearrangeMode();
+});
+document.addEventListener("dragover", (event) => {
+  if (!lockerDrag) return;
+  const cell = rearrangeTargetCell(event);
+  if (!cell) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  applyRearrangePreview(insertIndexFromY(lockerDrag.items, event.clientY));
+});
+document.addEventListener("drop", (event) => {
+  if (!lockerDrag) return;
+  const cell = rearrangeTargetCell(event);
+  if (!cell) return;
+  event.preventDefault();
+  applyRearrangePreview(insertIndexFromY(lockerDrag.items, event.clientY));
+  const drag = lockerDrag;
+  lockerDrag = null;
+  const changed = drag.insertIndex != null && drag.insertIndex !== drag.fromIndex;
+  clearRearrangePreview();
+  setRearranging(false);
+  if (changed) commitRearrange(drag);
 });
 saveLockerBtn.addEventListener("click", (event) => {
   event.preventDefault();
@@ -2174,6 +2695,8 @@ showcaseClose?.addEventListener("click", (event) => {
 showcaseOverlay?.addEventListener("click", (event) => {
   if (event.target === showcaseOverlay) closeShowcase();
 });
+showcaseImage?.addEventListener("load", layoutShowcaseInspect);
+showcaseKill?.addEventListener("click", playShowcaseKill);
 showcasePlay?.addEventListener("click", () => {
   if (!showcaseCurrent?.video || !showcaseVideo) return;
   if (!showcaseVideo.hidden) {
@@ -2275,6 +2798,9 @@ window.addEventListener(
   true
 );
 
-window.addEventListener("resize", closeSkinMenu);
+window.addEventListener("resize", () => {
+  closeSkinMenu();
+  if (showcaseOverlay && !showcaseOverlay.hidden) layoutShowcaseInspect();
+});
 
 init();
