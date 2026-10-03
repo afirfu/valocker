@@ -52,6 +52,9 @@ const BUCKETS = ["ultraExclusive", "premiumFinisher", "premiumNoFinisher", "sele
 
 const tableBody = document.getElementById("locker-body");
 const headerRow = document.getElementById("locker-head");
+const tableMeta = document.querySelector(".table-meta");
+const lockerHeadStick = document.querySelector(".locker-head-stick");
+const lockerHeadTable = document.querySelector(".locker-head-table");
 const sortEl = document.getElementById("locker-sort");
 const searchInput = document.getElementById("locker-search");
 const searchClear = document.getElementById("search-clear");
@@ -267,6 +270,7 @@ function setAuthed(user) {
   passwordInput.setAttribute("aria-hidden", "true");
   hideSecret();
   clearAuthErrors();
+  syncLockerStick();
 }
 
 function setLoggedOutUi({ keepUsername = false } = {}) {
@@ -287,6 +291,7 @@ function setLoggedOutUi({ keepUsername = false } = {}) {
   showSecret(null);
   clearAuthErrors();
   syncExportButton();
+  syncLockerStick();
 }
 
 async function clearSession({ keepUsername = false } = {}) {
@@ -1277,21 +1282,12 @@ function positionSkinMenu(wrap, shell, menu) {
   const optionHeight = parseFloat(getComputedStyle(menu).fontSize) * 2;
   const maxHeight = optionHeight * DROPDOWN_VISIBLE;
   menu.style.maxHeight = "none";
-  const contentHeight = menu.scrollHeight;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const openUp = spaceBelow < Math.min(maxHeight, contentHeight) && rect.top > spaceBelow;
-
   shell.style.left = `${rect.left}px`;
   shell.style.width = `${rect.width}px`;
   shell.style.maxHeight = `${maxHeight}px`;
   menu.style.maxHeight = `${maxHeight}px`;
-  if (openUp) {
-    shell.style.top = "auto";
-    shell.style.bottom = `${window.innerHeight - rect.top}px`;
-  } else {
-    shell.style.bottom = "auto";
-    shell.style.top = `${rect.bottom}px`;
-  }
+  shell.style.bottom = "auto";
+  shell.style.top = `${rect.bottom}px`;
   updateMenuOverflow(shell, menu);
 }
 
@@ -2303,6 +2299,20 @@ function renderLocker(weapons, tiers, themes, source, contracts = []) {
   paintLocker();
 }
 
+function syncLockerStick() {
+  if (!tableMeta) return;
+  document.documentElement.style.setProperty("--locker-meta-h", `${tableMeta.offsetHeight}px`);
+  if (!lockerHeadStick || !lockerHeadTable) return;
+  if (rearranging) {
+    lockerHeadStick.classList.remove("has-more");
+    return;
+  }
+  const gutter = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--locker-gutter")) || 36;
+  const stickyTop = gutter + tableMeta.offsetHeight;
+  const headRect = lockerHeadTable.getBoundingClientRect();
+  lockerHeadStick.classList.toggle("has-more", headRect.top <= stickyTop + 1);
+}
+
 function paintLocker() {
   if (!lockerCatalog) return;
   const { weapons, tiers, themes, contracts } = lockerCatalog;
@@ -2354,6 +2364,7 @@ function paintLocker() {
   syncCollectionLocks();
   applyAllSkinLabels();
   if (searching) applySearchHits();
+  syncLockerStick();
 }
 
 function closeFilterMenu() {
@@ -2622,6 +2633,10 @@ try {
 }
 
 async function init() {
+  syncLockerStick();
+  if (tableMeta && typeof ResizeObserver === "function") {
+    new ResizeObserver(syncLockerStick).observe(tableMeta);
+  }
   try {
     const session = await api("/api/session");
     if (session.user) {
@@ -2791,6 +2806,7 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener(
   "scroll",
   (event) => {
+    syncLockerStick();
     if (!openSkinSelect) return;
     if (event.target === openSkinSelect.menu || openSkinSelect.menu.contains(event.target)) return;
     closeSkinMenu();
@@ -2800,6 +2816,7 @@ window.addEventListener(
 
 window.addEventListener("resize", () => {
   closeSkinMenu();
+  syncLockerStick();
   if (showcaseOverlay && !showcaseOverlay.hidden) layoutShowcaseInspect();
 });
 

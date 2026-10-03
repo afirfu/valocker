@@ -18,7 +18,7 @@
         }
 
         html {
-            overflow-x: hidden;
+            overflow-x: clip;
             overflow-y: auto;
             scrollbar-width: none;
             -ms-overflow-style: none;
@@ -36,7 +36,6 @@
             --fs-header: 0.95rem;
             --fs-header-2: 0.8rem;
             --fs-body: 0.95rem;
-            --fs-description: 1.15rem;
             --fs-caption: 0.85rem;
             --fw-header: 700;
             --fw-regular: 400;
@@ -57,6 +56,8 @@
             --skin-on-fg: #fff;
             --meta-gap: 1em;
             --meta-control-h: 2.09rem;
+            --locker-gutter: 36px;
+            --locker-meta-h: 4.5rem;
             --gun-icon: brightness(0) invert(1);
             --meta-bg: #222;
             --meta-fg: #fff;
@@ -104,7 +105,7 @@
             align-items: center;
             min-height: 100vh;
             line-height: 1.6;
-            overflow-x: hidden;
+            overflow-x: clip;
             scrollbar-width: none;
             -ms-overflow-style: none;
         }
@@ -229,6 +230,23 @@
             gap: var(--meta-gap);
             width: 100%;
             text-align: left;
+            position: sticky;
+            top: var(--locker-gutter);
+            z-index: 16;
+            background: var(--page-bg);
+            background-attachment: fixed;
+            padding-bottom: 12px;
+        }
+
+        .table-meta::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 100%;
+            height: var(--locker-gutter);
+            background: var(--page-bg);
+            background-attachment: fixed;
         }
 
         .table-meta-left {
@@ -1434,21 +1452,17 @@
             font-weight: var(--fw-header);
         }
 
-        .description {
+        .source {
             margin-top: 50px;
-            font-size: var(--fs-description);
+            margin-left: auto;
+            margin-right: auto;
+            margin-bottom: 30px;
+            max-width: 800px;
+            font-size: var(--fs-caption);
             font-weight: var(--fw-regular);
             line-height: 1.5;
             text-align: center;
-            max-width: 800px;
-            margin-bottom: 30px;
-        }
-
-        .source {
-            font-size: var(--fs-caption);
-            font-weight: var(--fw-regular);
             opacity: 0.85;
-            margin-top: 16px;
         }
 
         .source a {
@@ -1962,8 +1976,44 @@
             width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
-            margin-top: 12px;
+            margin-top: 0;
             background-color: var(--table-bg);
+        }
+
+        .locker-head-stick {
+            position: sticky;
+            top: calc(var(--locker-gutter) + var(--locker-meta-h));
+            z-index: 15;
+        }
+
+        .locker-head-fade {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            z-index: 2;
+            height: 2em;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(to bottom, var(--table-header) 0%, color-mix(in srgb, var(--table-header) 55%, transparent) 42%, transparent 100%);
+        }
+
+        .locker-head-stick.has-more .locker-head-fade {
+            opacity: 1;
+        }
+
+        .locker-body-table {
+            margin-top: -1px;
+        }
+
+        .col-rarity { width: 11%; }
+        .col-gun { width: 12%; }
+        .col-skin { width: 19.25%; }
+
+        thead th {
+            height: 3.7em;
+            box-sizing: border-box;
+            background-color: var(--table-header);
         }
 
         th, td {
@@ -2039,11 +2089,6 @@
             line-height: var(--lh-header);
         }
 
-        thead th {
-            height: 3.7em;
-            box-sizing: border-box;
-        }
-
         th.rarity-col {
             width: 19.25%;
             padding: 0;
@@ -2051,9 +2096,9 @@
         }
 
         th.corner-head {
+            position: relative;
             padding: 0;
             overflow: hidden;
-            position: relative;
             vertical-align: stretch;
         }
 
@@ -2259,7 +2304,16 @@
                     </label>
                 </div>
             </div>
-            <table>
+            <div class="locker-head-stick">
+            <table class="locker-head-table">
+                <colgroup>
+                    <col class="col-rarity">
+                    <col class="col-gun">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                </colgroup>
                 <thead>
                     <tr id="locker-head">
                         <th class="corner-head" colspan="2">
@@ -2273,18 +2327,26 @@
                         </th>
                     </tr>
                 </thead>
+            </table>
+            <div class="locker-head-fade" aria-hidden="true"></div>
+            </div>
+            <table class="locker-body-table">
+                <colgroup>
+                    <col class="col-rarity">
+                    <col class="col-gun">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                    <col class="col-skin">
+                </colgroup>
                 <tbody id="locker-body"></tbody>
             </table>
+            <p class="source">
+                Gun skins are loaded live from
+                <a href="https://valorant-api.com/">valorant-api.com</a>
+                (weapons, content tiers, themes, and skin levels). Sequel labels such as (2.0) are added when a theme name has multiple numbered asset waves — for example Reaver’s Soulstealer / Soulstealer2 / Soulstealer3 paths. Melee is left empty for now.
+            </p>
         </div>
-    </div>
-    <div class="description">
-        This website serves the purpose of saving your desired skins while also allowing you to explore other users' collections or their desired collections.
-        Discover and curate your unique selection with ease.
-        <p class="source">
-            Gun skins are loaded live from
-            <a href="https://valorant-api.com/">valorant-api.com</a>
-            (weapons, content tiers, themes, and skin levels). Sequel labels such as (2.0) are added when a theme name has multiple numbered asset waves — for example Reaver’s Soulstealer / Soulstealer2 / Soulstealer3 paths. Melee is left empty for now.
-        </p>
     </div>
     <div id="label-toast" class="label-toast" hidden>Click a selected skin to label it.</div>
     <div id="label-overlay" class="label-overlay" hidden>
@@ -2376,5 +2438,9 @@
         </table>
     </div>
     <script src="./app.js"></script>
+    <script>
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
