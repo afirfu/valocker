@@ -391,3 +391,151 @@ def save_layout(user_id: int, payload: dict | None) -> None:
                 return
         finally:
             conn.close()
+
+
+def _xh_bool(value: Any, fallback: bool) -> bool:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip() in {"1", "true", "True"}
+
+
+def _xh_num(value: Any, fallback: float, low: float, high: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return min(high, max(low, number))
+
+
+def _xh_int(value: Any, fallback: int, low: int, high: int) -> int:
+    return int(_xh_num(value, fallback, low, high))
+
+
+def sanitize_crosshair_spec(raw: Any) -> dict:
+    data = raw if isinstance(raw, dict) else {}
+    inner_in = data.get("inner") if isinstance(data.get("inner"), dict) else {}
+    outer_in = data.get("outer") if isinstance(data.get("outer"), dict) else {}
+    extra_in = data.get("extra") if isinstance(data.get("extra"), dict) else {}
+    extra = {}
+    for key, value in list(extra_in.items())[:16]:
+        extra[str(key)[:8]] = str(value)[:24]
+    hex_raw = str(data.get("customHex") or "FFFFFF").replace("#", "").strip().upper()
+    if len(hex_raw) != 6 or any(ch not in "0123456789ABCDEF" for ch in hex_raw):
+        hex_raw = "FFFFFF"
+    return {
+        "color": _xh_int(data.get("color"), 0, 0, 8),
+        "customHex": hex_raw,
+        "outlines": _xh_bool(data.get("outlines"), True),
+        "outlineOpacity": _xh_num(data.get("outlineOpacity"), 0.5, 0, 1),
+        "outlineThickness": _xh_int(data.get("outlineThickness"), 1, 1, 6),
+        "centerDot": _xh_bool(data.get("centerDot"), False),
+        "centerDotOpacity": _xh_num(data.get("centerDotOpacity"), 1, 0, 1),
+        "centerDotThickness": _xh_int(data.get("centerDotThickness"), 2, 1, 6),
+        "inner": {
+            "show": _xh_bool(inner_in.get("show"), True),
+            "opacity": _xh_num(inner_in.get("opacity"), 0.8, 0, 1),
+            "length": _xh_int(inner_in.get("length"), 6, 0, 20),
+            "lengthV": _xh_int(inner_in.get("lengthV"), 6, 0, 20),
+            "linked": _xh_bool(inner_in.get("linked"), True),
+            "thickness": _xh_int(inner_in.get("thickness"), 2, 0, 10),
+            "offset": _xh_int(inner_in.get("offset"), 3, 0, 20),
+        },
+        "outer": {
+            "show": _xh_bool(outer_in.get("show"), True),
+            "opacity": _xh_num(outer_in.get("opacity"), 0.35, 0, 1),
+            "length": _xh_int(outer_in.get("length"), 2, 0, 20),
+            "lengthV": _xh_int(outer_in.get("lengthV"), 2, 0, 20),
+            "linked": _xh_bool(outer_in.get("linked"), True),
+            "thickness": _xh_int(outer_in.get("thickness"), 2, 0, 10),
+            "offset": _xh_int(outer_in.get("offset"), 10, 0, 40),
+        },
+        "extra": extra,
+    }
+
+
+def sanitize_crosshair(raw: Any) -> dict:
+    data = raw if isinstance(raw, dict) else {}
+    profiles_in = data.get("profiles")
+    profiles: list[dict] = []
+    if isinstance(profiles_in, list) and profiles_in:
+        for index, item in enumerate(profiles_in[:8]):
+            spec = sanitize_crosshair_spec(item)
+            name = str((item or {}).get("name") if isinstance(item, dict) else "").strip()[:24]
+            spec["name"] = name or f"Profile {index + 1}"
+            profiles.append(spec)
+    else:
+        spec = sanitize_crosshair_spec(data)
+        spec["name"] = "Profile 1"
+        extra = sanitize_crosshair_spec({})
+        extra["name"] = "Profile 2"
+        profiles = [spec, extra]
+    if len(profiles) < 2:
+        spare = sanitize_crosshair_spec({})
+        spare["name"] = "Profile 2"
+        profiles.append(spare)
+    active = _xh_int(data.get("active"), 0, 0, len(profiles) - 1)
+    mode = "default" if data.get("mode") == "default" else "custom"
+    return {"mode": mode, "active": active, "profiles": profiles}
+
+
+def load_crosshair(user_id: int) -> dict | None:
+    if use_supabase():
+        try:
+            rows = _sb_request("GET", "crosshairs", f"user_id=eq.{user_id}&select=payload")
+        except ValueError:
+            return None
+        if not rows:
+            return None
+        return sanitize_crosshair(rows[0].get("payload"))
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                row = conn.execute(
+                    "SELECT payload FROM crosshairs WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return None
+            if not row:
+                return None
+            try:
+                return sanitize_crosshair(json.loads(row["payload"]))
+            except (TypeError, json.JSONDecodeError):
+                return None
+        finally:
+            conn.close()
+
+
+def save_crosshair(user_id: int, payload: dict | None) -> None:
+    cleaned = sanitize_crosshair(payload)
+    if use_supabase():
+        try:
+            _sb_request("DELETE", "crosshairs", f"user_id=eq.{user_id}")
+            _sb_request(
+                "POST",
+                "crosshairs",
+                body={"user_id": user_id, "payload": cleaned},
+                extra={"Prefer": "return=minimal"},
+            )
+        except ValueError:
+            return
+        return
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                conn.execute(
+                    "INSERT INTO crosshairs (user_id, payload) VALUES (?, ?) "
+                    "ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
+                    (user_id, json.dumps(cleaned)),
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                return
+        finally:
+            conn.close()

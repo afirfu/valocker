@@ -24,10 +24,13 @@ from store import (
     create_user,
     delete_session,
     find_user,
+    load_crosshair,
     load_layout,
     load_locker,
+    save_crosshair,
     save_layout,
     save_locker,
+    sanitize_crosshair,
     sanitize_layout,
     use_supabase,
     user_exists,
@@ -111,6 +114,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             payload TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS crosshairs (
+            user_id INTEGER PRIMARY KEY,
+            payload TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
         """
     )
     cols = table_columns(conn, "labels")
@@ -147,6 +156,7 @@ def rebuild_auth_tables(conn: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS picks;
         DROP TABLE IF EXISTS labels;
         DROP TABLE IF EXISTS layouts;
+        DROP TABLE IF EXISTS crosshairs;
         """
     )
     conn.execute("PRAGMA foreign_keys = ON")
@@ -330,7 +340,12 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Not logged in"}, HTTPStatus.UNAUTHORIZED)
                 return
             picks, labels = load_locker(user["id"])
-            self.send_json({"picks": picks, "labels": labels, "layout": load_layout(user["id"])})
+            self.send_json({
+                "picks": picks,
+                "labels": labels,
+                "layout": load_layout(user["id"]),
+                "crosshair": load_crosshair(user["id"]),
+            })
             return
         if parsed.path == "/api/kill-audio":
             qs = parse_qs(parsed.query)
@@ -410,45 +425,48 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             return
         body = self.read_json()
         picks = body.get("picks")
-        if not isinstance(picks, dict):
+        if not isinstance(picks, dict) and "crosshair" not in body and "layout" not in body:
             raise ValueError("Picks are required")
-        cleaned = []
-        for key, name in picks.items():
-            pick_key = str(key).strip()
-            skin_name = str(name or "").strip()
-            if not pick_key or ":" not in pick_key or not skin_name:
-                continue
-            cleaned.append((pick_key, skin_name))
-        pick_keys = {pick_key for pick_key, _skin_name in cleaned}
-        label_items = []
-        raw_labels = body.get("labels")
-        if isinstance(raw_labels, dict):
-            allowed = {
-                "warpath",
-                "beastly",
-                "archetype",
-                "derivation",
-                "minimal",
-                "technological",
-                "whimsical",
-                "cartoonish",
-            }
-            for key, raw in raw_labels.items():
+        if isinstance(picks, dict):
+            cleaned = []
+            for key, name in picks.items():
                 pick_key = str(key).strip()
-                if pick_key not in pick_keys or not isinstance(raw, dict):
+                skin_name = str(name or "").strip()
+                if not pick_key or ":" not in pick_key or not skin_name:
                     continue
-                color = str(raw.get("color") or "").strip().lower()
-                if color not in allowed:
-                    color = ""
-                slant = 1 if raw.get("slant") else 0
-                bold = 1 if raw.get("bold") else 0
-                underline = 1 if raw.get("underline") else 0
-                if not color and not slant and not bold and not underline:
-                    continue
-                label_items.append((pick_key, color, slant, bold, underline))
-        save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
+                cleaned.append((pick_key, skin_name))
+            pick_keys = {pick_key for pick_key, _skin_name in cleaned}
+            label_items = []
+            raw_labels = body.get("labels")
+            if isinstance(raw_labels, dict):
+                allowed = {
+                    "warpath",
+                    "beastly",
+                    "archetype",
+                    "derivation",
+                    "minimal",
+                    "technological",
+                    "whimsical",
+                    "cartoonish",
+                }
+                for key, raw in raw_labels.items():
+                    pick_key = str(key).strip()
+                    if pick_key not in pick_keys or not isinstance(raw, dict):
+                        continue
+                    color = str(raw.get("color") or "").strip().lower()
+                    if color not in allowed:
+                        color = ""
+                    slant = 1 if raw.get("slant") else 0
+                    bold = 1 if raw.get("bold") else 0
+                    underline = 1 if raw.get("underline") else 0
+                    if not color and not slant and not bold and not underline:
+                        continue
+                    label_items.append((pick_key, color, slant, bold, underline))
+            save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
         if "layout" in body:
             save_layout(user["id"], sanitize_layout(body.get("layout")))
+        if "crosshair" in body:
+            save_crosshair(user["id"], sanitize_crosshair(body.get("crosshair")))
         self.send_json({"ok": True})
 
     def handle_export(self) -> None:

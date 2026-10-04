@@ -37,5 +37,10 @@ create table if not exists layouts (
   payload jsonb not null
 );
 
-revoke all on table users, sessions, picks, labels, layouts from anon, authenticated;
-grant all on table users, sessions, picks, labels, layouts to service_role;
+create table if not exists crosshairs (
+  user_id bigint primary key references users (id) on delete cascade,
+  payload jsonb not null
+);
+
+revoke all on table users, sessions, picks, labels, layouts, crosshairs from anon, authenticated;
+grant all on table users, sessions, picks, labels, layouts, crosshairs to service_role;

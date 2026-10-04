@@ -2201,6 +2201,220 @@
             font-size: var(--fs-body);
             font-weight: var(--fw-header);
         }
+
+        .crosshair-switch {
+            position: relative;
+        }
+
+        .crosshair-toggle {
+            margin: 0;
+            padding: 0 12px;
+            height: 2.2em;
+            border: 1px solid var(--page-fg);
+            background: transparent;
+            color: var(--page-fg);
+            font-size: var(--fs-body);
+            font-family: Arial, sans-serif;
+            font-weight: var(--fw-header);
+            cursor: pointer;
+        }
+
+        html.is-xh-panel,
+        html.is-xh-panel body {
+            overflow: hidden !important;
+        }
+
+        .crosshair-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 90;
+            width: 22rem;
+            max-height: min(72vh, 36rem);
+            overflow: auto;
+            overscroll-behavior: contain;
+            padding: 12px;
+            box-sizing: border-box;
+            text-align: left;
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            border: 1px solid var(--meta-border);
+            scrollbar-width: none;
+        }
+
+        .crosshair-panel::-webkit-scrollbar {
+            display: none;
+        }
+
+        .crosshair-panel[hidden] {
+            display: none !important;
+        }
+
+        .crosshair-preview {
+            position: relative;
+            height: 7.5rem;
+            margin-bottom: 10px;
+            background: #0b0b0b;
+            border: 1px solid var(--meta-border);
+        }
+
+        .crosshair-preview .crosshair-hud {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+        }
+
+        .crosshair-profile-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .crosshair-profile-row select {
+            flex: 1;
+            min-width: 0;
+            height: 2em;
+            border: 1px solid var(--meta-border);
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            font: inherit;
+        }
+
+        .crosshair-profile-row button {
+            width: 2em;
+            height: 2em;
+            padding: 0;
+            border: 1px solid var(--meta-border);
+            background: transparent;
+            color: var(--meta-fg);
+            font: inherit;
+            font-weight: var(--fw-header);
+            cursor: pointer;
+        }
+
+        .crosshair-modes {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .crosshair-modes button {
+            flex: 1;
+            height: 2em;
+            border: 1px solid var(--meta-border);
+            background: transparent;
+            color: var(--meta-fg);
+            font: inherit;
+            font-weight: var(--fw-header);
+            cursor: pointer;
+        }
+
+        .crosshair-modes button.is-on {
+            background: var(--meta-fg);
+            color: var(--meta-bg);
+        }
+
+        .crosshair-fields {
+            display: grid;
+            gap: 7px;
+        }
+
+        .crosshair-fields label,
+        .crosshair-check {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: var(--fs-caption);
+        }
+
+        .crosshair-fields label[hidden],
+        .crosshair-check[hidden] {
+            display: none !important;
+        }
+
+        .crosshair-fields input[type="range"] {
+            width: 8.5rem;
+        }
+
+        .crosshair-fields select,
+        .crosshair-fields input[type="text"],
+        .crosshair-code {
+            width: 8.5rem;
+            box-sizing: border-box;
+            border: 1px solid var(--meta-border);
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            font: inherit;
+        }
+
+        .crosshair-check input {
+            margin: 0;
+        }
+
+        .crosshair-legend {
+            margin: 8px 0 2px;
+            font-size: var(--fs-caption);
+            font-weight: var(--fw-header);
+        }
+
+        .crosshair-code-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .crosshair-code-row .crosshair-code {
+            flex: 1;
+            width: auto;
+            min-width: 0;
+            height: 2em;
+            padding: 0 6px;
+        }
+
+        .crosshair-code-row button {
+            height: 2em;
+            padding: 0 10px;
+            border: 1px solid var(--meta-border);
+            background: transparent;
+            color: var(--meta-fg);
+            font: inherit;
+            font-weight: var(--fw-header);
+            cursor: pointer;
+        }
+
+        .crosshair-hud {
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 400;
+            width: 0;
+            height: 0;
+            pointer-events: none;
+        }
+
+        .crosshair-hud[hidden] {
+            display: none !important;
+        }
+
+        .crosshair-piece {
+            position: absolute;
+            box-sizing: border-box;
+            background: var(--xh-color, #fff);
+            opacity: var(--xh-opacity, 1);
+            box-shadow: 0 0 0 var(--xh-outline, 0) rgba(0, 0, 0, var(--xh-outline-a, 0.5));
+        }
+
+        body.is-crosshair,
+        body.is-crosshair * {
+            cursor: none !important;
+        }
+
+        body.is-crosshair input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+        body.is-crosshair textarea,
+        body.is-crosshair [contenteditable="true"] {
+            cursor: text !important;
+        }
     </style>
 </head>
 <body>
@@ -2208,6 +2422,64 @@
         <h1>VaLocker</h1>
         <div class="header-tools">
         <button type="button" id="export-docx" class="export-docx is-off" aria-disabled="true">Export</button>
+        <div class="crosshair-switch">
+            <button type="button" id="crosshair-toggle" class="crosshair-toggle" aria-haspopup="dialog" aria-expanded="false">Crosshair</button>
+            <div id="crosshair-panel" class="crosshair-panel" hidden>
+                <div class="crosshair-preview"><div class="crosshair-hud" id="crosshair-preview"></div></div>
+                <div class="crosshair-profile-row">
+                    <select id="xh-profile" aria-label="Crosshair profile"></select>
+                    <button type="button" id="xh-profile-add" aria-label="Add profile">+</button>
+                </div>
+                <div class="crosshair-modes">
+                    <button type="button" data-xh-mode="default">Default</button>
+                    <button type="button" data-xh-mode="custom">Custom</button>
+                </div>
+                <div class="crosshair-fields">
+                    <label>Color
+                        <select id="xh-color">
+                            <option value="0">White</option>
+                            <option value="1">Green</option>
+                            <option value="2">Yellow Green</option>
+                            <option value="3">Green Yellow</option>
+                            <option value="4">Yellow</option>
+                            <option value="5">Cyan</option>
+                            <option value="6">Pink</option>
+                            <option value="7">Red</option>
+                            <option value="8">Custom</option>
+                        </select>
+                    </label>
+                    <label id="xh-hex-row" hidden>Custom
+                        <input id="xh-hex" type="text" maxlength="7" spellcheck="false" placeholder="#FFFFFF">
+                    </label>
+                    <label class="crosshair-check"><span>Outlines</span><input id="xh-outline" type="checkbox"></label>
+                    <label>Outline opacity <input id="xh-outline-a" type="range" min="0" max="1" step="0.05"></label>
+                    <label>Outline thickness <input id="xh-outline-t" type="range" min="1" max="6" step="1"></label>
+                    <label class="crosshair-check"><span>Center dot</span><input id="xh-dot" type="checkbox"></label>
+                    <label>Dot opacity <input id="xh-dot-a" type="range" min="0" max="1" step="0.05"></label>
+                    <label>Dot thickness <input id="xh-dot-t" type="range" min="1" max="6" step="1"></label>
+                    <div class="crosshair-legend">Inner lines</div>
+                    <label class="crosshair-check"><span>Show</span><input id="xh-in-on" type="checkbox"></label>
+                    <label>Opacity <input id="xh-in-a" type="range" min="0" max="1" step="0.05"></label>
+                    <label>Length <input id="xh-in-l" type="range" min="0" max="20" step="1"></label>
+                    <label class="crosshair-check"><span>Link vertical</span><input id="xh-in-g" type="checkbox"></label>
+                    <label id="xh-in-v-row" hidden>Vertical length <input id="xh-in-v" type="range" min="0" max="20" step="1"></label>
+                    <label>Thickness <input id="xh-in-t" type="range" min="0" max="10" step="1"></label>
+                    <label>Offset <input id="xh-in-o" type="range" min="0" max="20" step="1"></label>
+                    <div class="crosshair-legend">Outer lines</div>
+                    <label class="crosshair-check"><span>Show</span><input id="xh-out-on" type="checkbox"></label>
+                    <label>Opacity <input id="xh-out-a" type="range" min="0" max="1" step="0.05"></label>
+                    <label>Length <input id="xh-out-l" type="range" min="0" max="20" step="1"></label>
+                    <label class="crosshair-check"><span>Link vertical</span><input id="xh-out-g" type="checkbox"></label>
+                    <label id="xh-out-v-row" hidden>Vertical length <input id="xh-out-v" type="range" min="0" max="20" step="1"></label>
+                    <label>Thickness <input id="xh-out-t" type="range" min="0" max="10" step="1"></label>
+                    <label>Offset <input id="xh-out-o" type="range" min="0" max="40" step="1"></label>
+                </div>
+                <div class="crosshair-code-row">
+                    <input id="xh-code" class="crosshair-code" type="text" spellcheck="false" aria-label="Valorant crosshair code">
+                    <button type="button" id="xh-apply">Apply</button>
+                </div>
+            </div>
+        </div>
         <div class="theme-switch">
             <button type="button" class="theme-swatch theme-current theme-swatch-green" id="theme-current" aria-label="Color: Green" aria-haspopup="listbox" aria-expanded="false"></button>
             <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
@@ -2227,7 +2499,7 @@
                         <div class="meta-field">
                             <label class="meta-label" for="app-username">Username</label>
                             <span class="meta-input-wrap" data-field="username">
-                                <input id="app-username" name="username" autocomplete="username" placeholder="zapirpi" spellcheck="false">
+                                <input id="app-username" name="username" autocomplete="username" placeholder=" eg. zapirpi" spellcheck="false">
                                 <span class="meta-title" id="username-title"></span>
                                 <button type="button" class="meta-warn" hidden aria-label="Show warning">
                                     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -2437,6 +2709,7 @@
             </tbody>
         </table>
     </div>
+    <div id="crosshair-hud" class="crosshair-hud" hidden></div>
     <script src="./app.js"></script>
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
