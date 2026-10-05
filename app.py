@@ -89,6 +89,26 @@ def app_js():
     return send_from_directory(PUBLIC, "app.js")
 
 
+@app.get("/built.html")
+def built_plus():
+    return send_from_directory(PUBLIC, "built.html")
+
+
+@app.get("/chrome.css")
+def chrome_css():
+    return send_from_directory(PUBLIC, "chrome.css")
+
+
+@app.get("/theme.js")
+def theme_js():
+    return send_from_directory(PUBLIC, "theme.js")
+
+
+@app.get("/built.js")
+def built_js():
+    return send_from_directory(PUBLIC, "built.js")
+
+
 @app.get("/api/session")
 def api_session():
     user = current_user()

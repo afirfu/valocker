@@ -258,6 +258,12 @@ function setAuthed(user) {
   currentUser = user;
   usernameInput.value = user.username;
   usernameTitle.textContent = user.username;
+  try {
+    localStorage.setItem("valocker-username", user.username);
+  } catch {
+    /* ignore */
+  }
+  document.cookie = `valocker_username=${encodeURIComponent(user.username)}; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`;
   identityForm.classList.add("is-authed");
   secretLabel.textContent = "Save";
   secretLabel.removeAttribute("for");
@@ -288,6 +294,14 @@ function setLoggedOutUi({ keepUsername = false } = {}) {
   passwordInput.removeAttribute("aria-hidden");
   secretLabel.htmlFor = "meta-password";
   if (!keepUsername) usernameInput.value = "";
+  if (!keepUsername) {
+    try {
+      localStorage.removeItem("valocker-username");
+    } catch {
+      /* ignore */
+    }
+    document.cookie = "valocker_username=; Path=/; SameSite=Lax; Max-Age=0";
+  }
   showSecret(null);
   clearAuthErrors();
   syncExportButton();
@@ -2589,52 +2603,6 @@ identityForm.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleWarnTip(button.closest(".meta-input-wrap"));
 });
-
-const themeTrigger = document.getElementById("theme-current");
-const themeMenu = document.getElementById("theme-menu");
-const THEME_LABELS = { green: "Green", dark: "Dark", light: "Light" };
-
-function closeThemeMenu() {
-  if (!themeMenu || !themeTrigger) return;
-  themeMenu.hidden = true;
-  themeTrigger.setAttribute("aria-expanded", "false");
-}
-
-function applyTheme(theme) {
-  if (theme !== "dark" && theme !== "light") theme = "green";
-  document.documentElement.dataset.theme = theme;
-  try {
-    localStorage.setItem("valocker-theme", theme);
-  } catch {
-    /* ignore */
-  }
-  if (themeTrigger) {
-    themeTrigger.className = `theme-swatch theme-current theme-swatch-${theme}`;
-    themeTrigger.setAttribute("aria-label", `Color: ${THEME_LABELS[theme]}`);
-  }
-  for (const swatch of themeMenu?.querySelectorAll(".theme-swatch") || []) {
-    swatch.classList.toggle("is-on", swatch.dataset.theme === theme);
-  }
-  closeThemeMenu();
-}
-
-themeTrigger?.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (!themeMenu) return;
-  const open = themeMenu.hidden;
-  themeMenu.hidden = !open;
-  themeTrigger.setAttribute("aria-expanded", open ? "true" : "false");
-});
-themeMenu?.addEventListener("click", (event) => {
-  const swatch = event.target.closest(".theme-swatch");
-  if (swatch?.dataset.theme) applyTheme(swatch.dataset.theme);
-});
-
-try {
-  applyTheme(localStorage.getItem("valocker-theme") || "green");
-} catch {
-  applyTheme("green");
-}
 
 async function init() {
   syncLockerStick();

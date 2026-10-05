@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en" class="is-built" data-theme="green">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VaLocker · Built+</title>
+    <script>
+      try {
+        var savedTheme = localStorage.getItem("valocker-theme");
+        if (savedTheme === "dark" || savedTheme === "light") {
+          document.documentElement.dataset.theme = savedTheme;
+        }
+      } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="./chrome.css">
+    <style>
+        html.is-built,
+        html.is-built body {
+            height: auto;
+            min-height: 100%;
+            overflow-x: clip;
+            overflow-y: auto;
+        }
+
+        .container.is-built {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-wrap.built-wrap {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .built-meta {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: var(--meta-gap);
+            flex: 0 0 auto;
+            width: 100%;
+            padding-bottom: 12px;
+        }
+
+        .built-meta-left {
+            display: flex;
+            align-items: flex-end;
+            gap: var(--meta-gap);
+            min-width: 0;
+        }
+
+        .built-view {
+            position: relative;
+            display: flex;
+            height: var(--meta-control-h);
+            background: var(--meta-bg);
+        }
+
+        .built-view-thumb {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            width: 50%;
+            height: 100%;
+            background: var(--page-fg);
+            pointer-events: none;
+            transition: transform 0.32s ease;
+        }
+
+        .built-view[data-on="user"] .built-view-thumb {
+            transform: translateX(100%);
+        }
+
+        .built-view button {
+            flex: 1 1 0;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
+            margin: 0;
+            padding: 0 12px;
+            height: 100%;
+            border: 1px solid var(--meta-border);
+            background: transparent;
+            color: var(--meta-fg);
+            font-size: var(--fs-body);
+            font-family: Arial, sans-serif;
+            font-weight: var(--fw-header);
+            cursor: pointer;
+            transition: color 0.32s ease;
+        }
+
+        .built-view button + button {
+            border-left: none;
+        }
+
+        .built-view button.is-on {
+            background: transparent;
+            color: var(--table-bg);
+        }
+
+        .built-view-wrap,
+        .built-sort-wrap,
+        .built-refresh-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .built-sort-wrap[hidden],
+        .built-refresh-wrap[hidden] {
+            display: none !important;
+        }
+
+        .built-view-wrap .meta-label,
+        .built-sort-wrap .meta-label,
+        .built-refresh-wrap .meta-label,
+        #built-username {
+            display: block;
+            min-height: calc(var(--fs-caption) * var(--lh-header));
+            color: var(--page-fg);
+            font-size: var(--fs-caption);
+            font-weight: var(--fw-header);
+            line-height: var(--lh-header);
+            opacity: 1;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .built-sort-wrap .meta-label,
+        .built-refresh-wrap .meta-label {
+            opacity: 0.85;
+        }
+
+        .built-sort-wrap select {
+            margin: 0;
+            box-sizing: border-box;
+            width: 10em;
+            height: var(--meta-control-h);
+            padding: 0 10px;
+            border: 1px solid var(--meta-border);
+            border-radius: 0;
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            font-size: var(--fs-body);
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+        }
+
+        .built-add {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            width: var(--meta-control-h);
+            height: var(--meta-control-h);
+            margin: 0;
+            padding: 0;
+            border: 1px solid var(--meta-border);
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            font-size: 1.35rem;
+            font-family: Arial, sans-serif;
+            font-weight: var(--fw-header);
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .built-add.is-on {
+            background: var(--page-fg);
+            color: var(--table-bg);
+        }
+
+        .built-refresh {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            width: var(--meta-control-h);
+            height: var(--meta-control-h);
+            margin: 0;
+            padding: 0;
+            border: 1px solid var(--meta-border);
+            background: var(--meta-bg);
+            color: var(--meta-fg);
+            cursor: pointer;
+        }
+
+        .built-refresh svg {
+            display: block;
+            width: 15px;
+            height: 15px;
+        }
+
+        .built-refresh.is-spin svg {
+            animation: built-refresh-spin 0.45s ease;
+        }
+
+        @keyframes built-refresh-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .built-board {
+            flex: 0 0 auto;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            height: calc(100dvh - 2.75rem - 32px - var(--meta-control-h) - 60px);
+            min-height: calc(100dvh - 2.75rem - 32px - var(--meta-control-h) - 60px);
+            background-color: var(--table-bg);
+            border: 1px solid var(--table-border);
+        }
+
+        .built-col {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            border-right: 1px solid var(--table-border);
+        }
+
+        .built-col:last-child {
+            border-right: none;
+        }
+
+        .built-gc,
+        .built-gt,
+        .built-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            color: var(--table-fg);
+            border-bottom: 1px solid var(--table-border);
+        }
+
+        .built-gc:last-child,
+        .built-gt:last-child,
+        .built-empty {
+            border-bottom: none;
+        }
+
+        .built-gc {
+            flex: 1 1 0;
+            background-color: var(--table-header);
+            font-size: var(--fs-header-2);
+            font-weight: var(--fw-header);
+            line-height: 1;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 0 8px;
+        }
+
+        .built-gt {
+            flex: 2 1 0;
+            background-color: var(--table-bg);
+            font-size: var(--fs-body);
+            font-weight: var(--fw-regular);
+            padding: 0;
+        }
+
+        .built-gt .gun-swap {
+            position: relative;
+            display: grid;
+            grid-template: 1fr / 1fr;
+            place-items: center;
+            align-content: center;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            padding: 6px 10px;
+            overflow: hidden;
+        }
+
+        .built-gt .gun-name,
+        .built-gt .gun-icon {
+            grid-area: 1 / 1;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .built-gt .gun-name {
+            line-height: 1.2;
+            white-space: nowrap;
+            transition: opacity 0.35s ease, transform 0.35s ease, filter 0.35s ease;
+        }
+
+        .built-gt .gun-icon {
+            max-width: calc(100% - 20px);
+            max-height: 62%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            object-position: center;
+            opacity: 0;
+            transform: translateY(14px) scale(0.72);
+            pointer-events: none;
+            filter: var(--gun-icon) blur(6px);
+            transition: opacity 0.35s ease, transform 0.35s ease, filter 0.35s ease;
+        }
+
+        .built-gt:hover .gun-name {
+            opacity: 0;
+            transform: translateY(-12px) scale(0.88);
+            filter: blur(4px);
+        }
+
+        .built-gt:hover .gun-icon {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: var(--gun-icon) blur(0);
+        }
+
+        .built-plus-mark {
+            grid-area: 1 / 1;
+            z-index: 1;
+            font-size: 1.8rem;
+            font-weight: var(--fw-header);
+            line-height: 1;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(14px) scale(0.72);
+            filter: blur(6px);
+            transition: opacity 0.35s ease, transform 0.35s ease, filter 0.35s ease;
+        }
+
+        body.is-building .built-gt:not(.is-locked):hover .gun-icon {
+            opacity: 0;
+            transform: translateY(14px) scale(0.72);
+            filter: var(--gun-icon) blur(6px);
+        }
+
+        body.is-building .built-gt:not(.is-locked):hover .built-plus-mark {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
+
+        .built-gt.is-locked {
+            position: relative;
+        }
+
+        .built-gt.is-locked .gun-name {
+            position: relative;
+            z-index: 1;
+        }
+
+        .built-gt.is-locked:hover .gun-name {
+            opacity: 1;
+            transform: none;
+            filter: none;
+        }
+
+        .built-slash {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .built-slash line {
+            stroke: var(--table-border);
+            stroke-width: 1.5;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .built-gt.is-double {
+            flex: 4 1 0;
+        }
+
+        .built-gt .gun-search-shimmer {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(
+                90deg,
+                var(--tbl-skel-base) 18%,
+                var(--tbl-skel-highlight) 50%,
+                var(--tbl-skel-base) 82%
+            );
+            background-size: 220% 100%;
+            animation: nuda-table-shimmer 3.8s ease-in-out infinite;
+            animation-delay: calc(var(--search-col, 0) * 0.48s + var(--search-row, 0) * 0.1s);
+            transition: opacity 0.45s ease;
+        }
+
+        :root {
+            --tbl-skel-base: rgba(255, 255, 255, 0.06);
+            --tbl-skel-highlight: rgba(255, 255, 255, 0.32);
+        }
+
+        html[data-theme="light"] {
+            --tbl-skel-base: rgba(0, 0, 0, 0.05);
+            --tbl-skel-highlight: rgba(0, 0, 0, 0.28);
+        }
+
+        @keyframes nuda-table-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .built-gt .gun-search-shimmer {
+                animation: none;
+                background: var(--tbl-skel-base);
+            }
+        }
+
+        body.is-refreshing .built-gt:not(.is-locked) .gun-name,
+        body.is-refreshing .built-gt:not(.is-locked) .gun-icon,
+        body.is-refreshing .built-gt:not(.is-locked) .built-plus-mark {
+            opacity: 0;
+            transform: translateY(-12px) scale(0.88);
+            filter: blur(4px);
+        }
+
+        body.is-refreshing .built-gt:not(.is-locked) .gun-search-shimmer {
+            opacity: 1;
+        }
+
+        .built-gt.is-open,
+        .built-empty {
+            flex: 2 1 0;
+            background-color: var(--table-bg);
+        }
+
+        .built-empty {
+            flex: 1 1 auto;
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <h1><a href="./index.html">VaLocker</a></h1>
+        <div class="header-tools">
+            <a class="header-link" href="./built.html" aria-current="page">Built+</a>
+            <div class="theme-switch">
+                <button type="button" class="theme-swatch theme-current theme-swatch-green" id="theme-current" aria-label="Color: Green" aria-haspopup="listbox" aria-expanded="false"></button>
+                <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
+                    <button type="button" class="theme-swatch theme-swatch-green is-on" data-theme="green" aria-label="Green"></button>
+                    <button type="button" class="theme-swatch theme-swatch-dark" data-theme="dark" aria-label="Dark"></button>
+                    <button type="button" class="theme-swatch theme-swatch-light" data-theme="light" aria-label="Light"></button>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="container is-built">
+        <div class="table-wrap built-wrap">
+            <div class="table-meta built-meta">
+                <div class="built-meta-left">
+                    <div class="built-view-wrap">
+                        <span class="meta-label" id="built-username"></span>
+                        <div class="built-view" id="built-view" role="tablist" aria-label="Built+ view" data-on="explore">
+                            <span class="built-view-thumb" aria-hidden="true"></span>
+                            <button type="button" data-view="explore" class="is-on" role="tab" aria-selected="true">Explore</button>
+                            <button type="button" data-view="user" role="tab" aria-selected="false">User</button>
+                        </div>
+                    </div>
+                    <div class="built-refresh-wrap" id="built-refresh-wrap">
+                        <span class="meta-label"></span>
+                        <button type="button" class="built-refresh" id="built-refresh" aria-label="Cycle concepts">
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M3.2 8a4.8 4.8 0 0 1 8-2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"></path>
+                                <path d="M12.5 2.4v3.3H9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"></path>
+                                <path d="M12.8 8a4.8 4.8 0 0 1-8 2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"></path>
+                                <path d="M3.5 13.6V10.3H6.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <label class="built-sort-wrap" id="built-sort-wrap" hidden>
+                        <span class="meta-label">Sort</span>
+                        <select id="built-sort" aria-label="Personal sort">
+                            <option value="bundle">Bundle</option>
+                            <option value="random">Randomized</option>
+                        </select>
+                    </label>
+                </div>
+                <button type="button" class="built-add" id="built-add" aria-label="Build more" aria-pressed="false">+</button>
+            </div>
+            <div class="built-board" id="built-board"></div>
+        </div>
+    </div>
+    <script src="./theme.js"></script>
+    <script src="./built.js?v=bp4"></script>
+    <script>
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>

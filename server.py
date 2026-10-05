@@ -306,7 +306,18 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
     def create_session(self, user_id: int) -> str:
         return create_session_token(user_id)
 
+    def redirect_localhost(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":")[0].strip().lower()
+        if host != "localhost":
+            return False
+        self.send_response(HTTPStatus.TEMPORARY_REDIRECT)
+        self.send_header("Location", f"http://127.0.0.1:{PORT}{self.path}")
+        self.end_headers()
+        return True
+
     def do_OPTIONS(self) -> None:
+        if self.redirect_localhost():
+            return
         parsed = urlparse(self.path)
         if not parsed.path.startswith("/api/"):
             self.send_error(HTTPStatus.NOT_FOUND, "Unknown API route")
@@ -318,6 +329,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self.redirect_localhost():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/session":
             user = self.current_user()
@@ -355,6 +368,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
+        if self.redirect_localhost():
+            return
         parsed = urlparse(self.path)
         routes = {
             "/api/register": self.handle_register,

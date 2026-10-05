@@ -12,205 +12,8 @@
         }
       } catch (e) {}
     </script>
+    <link rel="stylesheet" href="./chrome.css">
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        html {
-            overflow-x: clip;
-            overflow-y: auto;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-
-        html::-webkit-scrollbar,
-        body::-webkit-scrollbar {
-            display: none;
-            width: 0;
-            height: 0;
-        }
-
-        :root {
-            --fs-title: 2.5rem;
-            --fs-header: 0.95rem;
-            --fs-header-2: 0.8rem;
-            --fs-body: 0.95rem;
-            --fs-caption: 0.85rem;
-            --fw-header: 700;
-            --fw-regular: 400;
-            --lh-header: 1.25;
-            --page-bg: linear-gradient(135deg, #1a1a1a, #0f9b0f);
-            --page-fg: #fff;
-            --link: #b8ffb8;
-            --table-bg: #222;
-            --table-header: #333;
-            --table-stripe: #333;
-            --table-hover: #444;
-            --table-category: #222;
-            --table-border: #fff;
-            --table-fg: #fff;
-            --skin-color: #0f9b0f;
-            --skin-color-down: #0d7a0d;
-            --skin-x: #0d7a0d;
-            --skin-on-fg: #fff;
-            --meta-gap: 1em;
-            --meta-control-h: 2.09rem;
-            --locker-gutter: 36px;
-            --locker-meta-h: 4.5rem;
-            --gun-icon: brightness(0) invert(1);
-            --meta-bg: #222;
-            --meta-fg: #fff;
-            --meta-border: #666;
-        }
-
-        html[data-theme="dark"] {
-            --page-bg: #121212;
-            --page-fg: #fff;
-            --link: #c8c8c8;
-            --skin-color: #fff;
-            --skin-color-down: #d0d0d0;
-            --skin-x: #8a8a8a;
-            --skin-on-fg: #111;
-        }
-
-        html[data-theme="light"] {
-            --page-bg: #f2f2f2;
-            --page-fg: #111;
-            --link: #0b6b0b;
-            --table-bg: #e8e8e8;
-            --table-header: #d6d6d6;
-            --table-stripe: #dedede;
-            --table-hover: #d0d0d0;
-            --table-category: #d2d2d2;
-            --table-border: #111;
-            --table-fg: #111;
-            --skin-color: #111;
-            --skin-color-down: #333;
-            --skin-x: #9a9a9a;
-            --gun-icon: brightness(0);
-            --meta-bg: #fff;
-            --meta-fg: #111;
-            --meta-border: #111;
-        }
-
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: var(--page-bg);
-            background-attachment: fixed;
-            color: var(--page-fg);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: clip;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-
-        .site-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            width: 100%;
-            padding: 16px 24px;
-            box-sizing: border-box;
-        }
-
-        .site-header h1 {
-            margin: 0;
-            font-size: var(--fs-title);
-            font-weight: var(--fw-header);
-            line-height: 1.1;
-        }
-
-        .header-tools {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .export-docx {
-            margin: 0;
-            padding: 0 12px;
-            height: 2.2em;
-            border: 1px solid var(--page-fg);
-            background: transparent;
-            color: var(--page-fg);
-            font-size: var(--fs-body);
-            font-family: Arial, sans-serif;
-            font-weight: var(--fw-header);
-            cursor: pointer;
-        }
-
-        .export-docx.is-off {
-            opacity: 0.35;
-            cursor: not-allowed;
-        }
-
-        .theme-switch {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .theme-swatch {
-            appearance: none;
-            width: 22px;
-            height: 22px;
-            padding: 0;
-            border: 2px solid rgb(128 128 128 / 0.7);
-            cursor: pointer;
-        }
-
-        .theme-current {
-            border-color: var(--page-fg);
-        }
-
-        .theme-menu {
-            position: absolute;
-            top: calc(100% + 8px);
-            left: 50%;
-            z-index: 70;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            transform: translateX(-50%);
-        }
-
-        .theme-menu[hidden] {
-            display: none !important;
-        }
-
-        .theme-menu .theme-swatch.is-on {
-            display: none;
-        }
-
-        .theme-swatch-green {
-            background: #0f9b0f;
-        }
-
-        .theme-swatch-dark {
-            background: #1a1a1a;
-        }
-
-        .theme-swatch-light {
-            background: #fff;
-        }
-
-        .container {
-            width: calc(100% - 48px);
-            max-width: none;
-            text-align: center;
-            margin-top: max(32px, calc(33.333vh - 4.8rem));
-            margin-bottom: 50px;
-            padding: 8px 12px 20px;
-        }
-
         .table-wrap[hidden],
         .meta-field[hidden],
         .meta-warn[hidden],
@@ -2206,19 +2009,6 @@
             position: relative;
         }
 
-        .crosshair-toggle {
-            margin: 0;
-            padding: 0 12px;
-            height: 2.2em;
-            border: 1px solid var(--page-fg);
-            background: transparent;
-            color: var(--page-fg);
-            font-size: var(--fs-body);
-            font-family: Arial, sans-serif;
-            font-weight: var(--fw-header);
-            cursor: pointer;
-        }
-
         html.is-xh-panel,
         html.is-xh-panel body {
             overflow: hidden !important;
@@ -2480,6 +2270,7 @@
                 </div>
             </div>
         </div>
+        <a class="header-link" href="./built.html">Built+</a>
         <div class="theme-switch">
             <button type="button" class="theme-swatch theme-current theme-swatch-green" id="theme-current" aria-label="Color: Green" aria-haspopup="listbox" aria-expanded="false"></button>
             <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
@@ -2710,6 +2501,7 @@
         </table>
     </div>
     <div id="crosshair-hud" class="crosshair-hud" hidden></div>
+    <script src="./theme.js"></script>
     <script src="./app.js"></script>
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
