@@ -49,6 +49,41 @@ const RARITY_COLUMNS = [
 
 const DROPDOWN_VISIBLE = 15;
 const BUCKETS = ["ultraExclusive", "premiumFinisher", "premiumNoFinisher", "selectDeluxe"];
+const TIER_VP = {
+  "Select Edition": 875,
+  "Deluxe Edition": 1275,
+  "Premium Edition": 1775,
+  "Exclusive Edition": 2175,
+  "Ultra Edition": 2475,
+};
+const MY_VP_PACK = { vp: 3650, myr: 118.9 };
+const US_VP_PACK = { vp: 3650, usd: 34.99 };
+const REGION_CURRENCY = {
+  AD: "EUR", AE: "USD", AL: "EUR", AM: "USD", AR: "USD", AT: "EUR", AU: "AUD", AZ: "USD",
+  BA: "EUR", BE: "EUR", BG: "EUR", BH: "USD", BO: "USD", BR: "BRL", BY: "USD",
+  CA: "CAD", CH: "CHF", CL: "USD", CN: "CNY", CO: "USD", CR: "USD", CY: "EUR", CZ: "CZK",
+  DE: "EUR", DK: "DKK", DO: "USD", DZ: "USD",
+  EC: "USD", EE: "EUR", EG: "USD", ES: "EUR",
+  FI: "EUR", FR: "EUR",
+  GB: "GBP", GE: "USD", GR: "EUR", GT: "USD",
+  HK: "HKD", HN: "USD", HR: "EUR", HU: "HUF",
+  ID: "IDR", IE: "EUR", IL: "ILS", IN: "INR", IQ: "USD", IS: "ISK", IT: "EUR",
+  JP: "JPY",
+  KR: "KRW", KW: "USD", KZ: "USD",
+  LB: "USD", LK: "USD", LT: "EUR", LU: "EUR", LV: "EUR",
+  MA: "USD", MC: "EUR", MD: "EUR", ME: "EUR", MK: "EUR", MT: "EUR", MX: "MXN", MY: "MYR",
+  NG: "USD", NL: "EUR", NO: "NOK", NZ: "NZD",
+  OM: "USD",
+  PA: "USD", PE: "USD", PH: "PHP", PK: "USD", PL: "PLN", PR: "USD", PT: "EUR", PY: "USD",
+  QA: "USD",
+  RO: "RON", RS: "EUR", RU: "USD",
+  SA: "USD", SE: "SEK", SG: "SGD", SI: "EUR", SK: "EUR", SM: "EUR", SV: "USD",
+  TH: "THB", TR: "TRY", TW: "USD",
+  UA: "USD", US: "USD", UY: "USD", UZ: "USD",
+  VA: "EUR", VE: "USD", VN: "USD",
+  ZA: "ZAR",
+};
+let fxFromUsd = { USD: 1, MYR: 4.0915 };
 
 const tableBody = document.getElementById("locker-body");
 const headerRow = document.getElementById("locker-head");
@@ -77,6 +112,7 @@ const secretLabel = document.getElementById("meta-secret-label");
 const passwordInput = document.getElementById("meta-password");
 const usernameTitle = document.getElementById("username-title");
 const saveLockerBtn = document.getElementById("save-locker");
+const forgotBtn = document.getElementById("forgot-password");
 const logoutBtn = document.getElementById("logout-btn");
 const exportBtn = document.getElementById("export-docx");
 const showcaseOverlay = document.getElementById("showcase-overlay");
@@ -93,6 +129,8 @@ const showcaseKill = document.getElementById("showcase-kill");
 const showcaseKillCount = document.getElementById("showcase-kill-count");
 const showcaseKillStatus = document.getElementById("showcase-kill-status");
 const showcaseStrip = document.getElementById("showcase-strip");
+const showcasePriceFiat = document.getElementById("showcase-price-fiat");
+const showcasePriceVp = document.getElementById("showcase-price-vp");
 const EXPORT_SOURCES = new Set(["collection", "battlepass", "limited", "agent"]);
 const APP_ORIGIN = "http://127.0.0.1:4173";
 
@@ -141,6 +179,14 @@ let labelling = false;
 let searching = false;
 let rearranging = false;
 let currentUser = null;
+let lockerHydrated = false;
+let lockerSaving = false;
+let recovering = false;
+let recoverPassed = false;
+let recoverToken = "";
+let recoverKeys = [];
+let recoverChecking = false;
+let recoverTimer = 0;
 let identityExists = null;
 let identityTimer = 0;
 let identitySeq = 0;
@@ -238,6 +284,7 @@ function sameUser(username, user = currentUser) {
 function hideSecret() {
   passwordInput.required = false;
   passwordInput.value = "";
+  syncForgotLink();
 }
 
 function showSecret(exists) {
@@ -248,9 +295,173 @@ function showSecret(exists) {
   if (identityExists === false) {
     secretLabel.textContent = "Create password";
     passwordInput.autocomplete = "new-password";
+    exitRecover();
+  } else if (recoverPassed) {
+    secretLabel.textContent = "Reset Password";
+    passwordInput.autocomplete = "new-password";
   } else {
     secretLabel.textContent = "Password";
     passwordInput.autocomplete = "current-password";
+  }
+  syncForgotLink();
+}
+
+function syncForgotLink() {
+  if (!forgotBtn) return;
+  forgotBtn.hidden = Boolean(currentUser) || identityExists !== true;
+}
+
+function recoverViableSlots() {
+  return [...document.querySelectorAll(".skin-select")]
+    .filter((wrap) => wrap.dataset.pick && !wrap.classList.contains("is-disabled"))
+    .map((wrap) => wrap.dataset.pick);
+}
+
+function ensureRecoverNone(wrap) {
+  const menu = wrap.skinMenu;
+  if (!menu || menu.querySelector(".skin-option-none")) return;
+  const none = document.createElement("button");
+  none.type = "button";
+  none.className = "skin-option skin-option-none";
+  none.dataset.value = "";
+  none.textContent = "No skins";
+  none.setAttribute("role", "option");
+  none.setAttribute("aria-selected", "false");
+  const remove = menu.querySelector(".skin-option-remove");
+  if (remove) remove.after(none);
+  else menu.prepend(none);
+}
+
+function paintRecoverCells() {
+  const keySet = new Set(recoverKeys);
+  for (const wrap of document.querySelectorAll(".skin-select")) {
+    const on = recovering && keySet.has(wrap.dataset.pick);
+    wrap.classList.toggle("is-recover", on);
+    if (on) {
+      ensureRecoverNone(wrap);
+      const remove = wrap.skinMenu?.querySelector(".skin-option-remove");
+      if (remove) remove.hidden = true;
+    } else {
+      delete wrap.dataset.recoverSet;
+    }
+  }
+}
+
+function recoverGuesses() {
+  const guesses = {};
+  for (const key of recoverKeys) {
+    const wrap = document.querySelector(`.skin-select[data-pick="${key}"]`);
+    if (!wrap || wrap.dataset.recoverSet !== "1") return null;
+    guesses[key] = wrap.dataset.value || "";
+  }
+  return guesses;
+}
+
+function queueRecoverCheck() {
+  window.clearTimeout(recoverTimer);
+  recoverTimer = window.setTimeout(() => {
+    maybeRecoverCheck();
+  }, 40);
+}
+
+function paintRecoverSecret(passed) {
+  const wasPassed = recoverPassed;
+  recoverPassed = Boolean(passed);
+  if (recoverPassed) {
+    secretLabel.textContent = "Reset Password";
+    secretLabel.htmlFor = "meta-password";
+    passwordInput.autocomplete = "new-password";
+    if (!wasPassed) {
+      passwordInput.value = "";
+      passwordInput.focus();
+    }
+    return;
+  }
+  secretLabel.textContent = "Password";
+  secretLabel.htmlFor = "meta-password";
+  passwordInput.autocomplete = "current-password";
+  if (wasPassed) passwordInput.value = "";
+}
+
+async function maybeRecoverCheck() {
+  if (!recovering || recoverChecking || !recoverToken) return;
+  const guesses = recoverGuesses();
+  if (!guesses) {
+    paintRecoverSecret(false);
+    return;
+  }
+  recoverChecking = true;
+  try {
+    const data = await api("/api/recover/check", {
+      method: "POST",
+      body: JSON.stringify({ token: recoverToken, picks: guesses }),
+    });
+    if (!recovering) return;
+    recoverToken = data.token || recoverToken;
+    paintRecoverSecret(Boolean(data.ok));
+  } catch (error) {
+    paintRecoverSecret(false);
+    setFieldError(passwordInput, error.message);
+  } finally {
+    recoverChecking = false;
+  }
+}
+
+function exitRecover() {
+  if (!recovering && !recoverPassed && !recoverToken) {
+    syncForgotLink();
+    return;
+  }
+  recovering = false;
+  recoverPassed = false;
+  recoverToken = "";
+  recoverKeys = [];
+  recoverChecking = false;
+  window.clearTimeout(recoverTimer);
+  document.body.classList.remove("is-recovering");
+  for (const wrap of document.querySelectorAll(".skin-select.is-recover")) {
+    wrap.classList.remove("is-recover");
+    delete wrap.dataset.recoverSet;
+  }
+  if (!currentUser && identityExists === true) {
+    secretLabel.textContent = "Password";
+    secretLabel.htmlFor = "meta-password";
+    passwordInput.autocomplete = "current-password";
+  }
+  syncForgotLink();
+  syncModeLocks();
+  if (lockerCatalog && !currentUser) paintLocker();
+}
+
+async function startRecover() {
+  if (currentUser || identityExists !== true) return;
+  if (recovering) {
+    exitRecover();
+    return;
+  }
+  clearAuthErrors();
+  if (labelling) exitLabellingMode();
+  if (searching) exitSearchMode();
+  if (rearranging) exitRearrangeMode();
+  try {
+    await loadLockerTable();
+    const slots = recoverViableSlots();
+    const data = await api("/api/recover/start", {
+      method: "POST",
+      body: JSON.stringify({ username: currentUsername(), slots }),
+    });
+    recoverToken = data.token || "";
+    recoverKeys = Array.isArray(data.keys) ? data.keys.filter(Boolean).slice(0, 3) : [];
+    if (!recoverToken || recoverKeys.length !== 3) throw new Error("Locker is not ready");
+    recovering = true;
+    recoverPassed = false;
+    document.body.classList.add("is-recovering");
+    paintRecoverCells();
+    syncCollectionLocks();
+    syncModeLocks();
+  } catch (error) {
+    exitRecover();
+    setFieldError(passwordInput, error.message);
   }
 }
 
@@ -276,11 +487,18 @@ function setAuthed(user) {
   passwordInput.setAttribute("aria-hidden", "true");
   hideSecret();
   clearAuthErrors();
+  exitRecover();
+  syncForgotLink();
   syncLockerStick();
+  syncSaveEnabled();
+  if (typeof syncProfileAuth === "function") syncProfileAuth(user);
 }
 
 function setLoggedOutUi({ keepUsername = false } = {}) {
   currentUser = null;
+  lockerHydrated = false;
+  lockerSaving = false;
+  clearLogoutArm();
   identityForm.classList.remove("is-authed");
   usernameTitle.textContent = "";
   saveLockerBtn.textContent = "Save";
@@ -304,8 +522,12 @@ function setLoggedOutUi({ keepUsername = false } = {}) {
   }
   showSecret(null);
   clearAuthErrors();
+  exitRecover();
+  syncForgotLink();
+  syncSaveEnabled();
   syncExportButton();
   syncLockerStick();
+  if (typeof syncProfileAuth === "function") syncProfileAuth(null);
 }
 
 async function clearSession({ keepUsername = false } = {}) {
@@ -331,6 +553,8 @@ function applyIdentity(user) {
 }
 
 async function loadPicks() {
+  lockerHydrated = false;
+  syncSaveEnabled();
   lockerPicks.clear();
   lockerLabels.clear();
   const data = await api("/api/picks");
@@ -348,6 +572,9 @@ async function loadPicks() {
   rememberSavedPicks();
   if (data.crosshair) loadCrosshair(data.crosshair);
   else loadCrosshair();
+  if (data.agent && typeof applySavedAgent === "function") applySavedAgent(data.agent);
+  lockerHydrated = true;
+  syncSaveEnabled();
 }
 
 function normalizeLabel(raw) {
@@ -400,18 +627,40 @@ function picksMatchSaved() {
   return labelsMatchSaved() && layoutsEqual(lockerLayout, lastSavedLayout);
 }
 
+function unsavedSelectionCount() {
+  const keys = new Set([...lockerPicks.keys(), ...lastSavedPicks.keys()]);
+  let count = 0;
+  for (const key of keys) {
+    if (lockerPicks.get(key) !== lastSavedPicks.get(key)) count += 1;
+  }
+  return count;
+}
+
+function unsavedLogoutMessage() {
+  if (unsavedSelectionCount() > 1) {
+    return "current selections are not saved yet,\nclick logout again to quit with unsaved selections";
+  }
+  return "current selection is not saved yet,\nclick logout again to quit with unsaved selection";
+}
+
 function rememberSavedPicks() {
   lastSavedPicks.clear();
   lastSavedLabels.clear();
   for (const [key, name] of lockerPicks) lastSavedPicks.set(key, name);
   for (const [key, label] of lockerLabels) lastSavedLabels.set(key, { ...label });
+  clearLogoutArm();
   syncSaveButton();
+}
+
+function syncSaveEnabled() {
+  saveLockerBtn.disabled = !currentUser || !lockerHydrated || lockerSaving;
 }
 
 function syncSaveButton() {
   const saved = picksMatchSaved();
   saveLockerBtn.textContent = saved ? "Saved" : "Save";
   saveLockerBtn.classList.toggle("is-saved", saved);
+  syncSaveEnabled();
   syncExportButton();
 }
 
@@ -466,6 +715,31 @@ function buildExportGroups() {
 
 let exportArmed = false;
 let exportArmTimer = 0;
+let logoutArmed = false;
+let logoutArmTimer = 0;
+
+function clearLogoutArm() {
+  logoutArmed = false;
+  window.clearTimeout(logoutArmTimer);
+}
+
+function requestLogout() {
+  if (!currentUser) return;
+  if (picksMatchSaved()) {
+    clearLogoutArm();
+    clearSession();
+    return;
+  }
+  if (!logoutArmed) {
+    logoutArmed = true;
+    window.clearTimeout(logoutArmTimer);
+    showAppToast(unsavedLogoutMessage(), 4000);
+    logoutArmTimer = window.setTimeout(clearLogoutArm, 4000);
+    return;
+  }
+  clearLogoutArm();
+  clearSession();
+}
 
 function clearExportArm() {
   exportArmed = false;
@@ -475,7 +749,7 @@ function clearExportArm() {
 function askExportConfirm() {
   exportArmed = true;
   window.clearTimeout(exportArmTimer);
-  showAppToast("export saves into DOCX format?\nclick again to export", 4000);
+  showAppToast("no new changes", 4000);
   exportArmTimer = window.setTimeout(clearExportArm, 4000);
 }
 
@@ -527,9 +801,10 @@ async function exportLockerDocx() {
 }
 
 async function saveLocker() {
-  if (!currentUser) return;
+  if (!currentUser || !lockerHydrated || lockerSaving) return;
   clearAuthErrors();
-  saveLockerBtn.disabled = true;
+  lockerSaving = true;
+  syncSaveEnabled();
   try {
     await api("/api/picks", {
       method: "POST",
@@ -545,7 +820,8 @@ async function saveLocker() {
   } catch (error) {
     setFieldError(passwordInput, error.message);
   } finally {
-    saveLockerBtn.disabled = false;
+    lockerSaving = false;
+    syncSaveEnabled();
   }
 }
 
@@ -1310,7 +1586,12 @@ function positionSkinMenu(wrap, shell, menu) {
 }
 
 function collectionFamily(name) {
-  return (name || "").replace(/\s*\(\d+\.0\)\s*$/i, "").trim().toLowerCase();
+  return (name || "")
+    .replace(/\s*\(\d+\.0\)\s*$/i, "")
+    .replace(/\s*\/\/\s*\d+(?:\.\d+)?\s*$/i, "")
+    .replace(/\s+\d+\.\d+\s*$/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 let showcaseByKey = new Map();
@@ -1358,9 +1639,57 @@ function scrollShowcaseStripTo(tile) {
 }
 
 function sequelWaveFromLabel(label) {
-  const match = (label || "").match(/\((\d+)\.0\)\s*$/);
-  return match ? Number(match[1]) : 1;
+  const text = label || "";
+  const paren = text.match(/\((\d+)\.0\)\s*$/);
+  if (paren) return Number(paren[1]);
+  const slash = text.match(/\/\/\s*(\d+)(?:\.0)?\s*$/i);
+  if (slash) return Number(slash[1]);
+  const dotted = text.match(/\s+(\d+)\.0\s*$/);
+  if (dotted) return Number(dotted[1]);
+  return 1;
 }
+
+function showcaseCurrency() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (tz === "Asia/Kuala_Lumpur") return "MYR";
+    const region = new Intl.Locale(navigator.language || "en-MY").maximize().region || "MY";
+    return REGION_CURRENCY[region] || "MYR";
+  } catch {
+    return "MYR";
+  }
+}
+
+function vpToFiat(vp, currency) {
+  if (!vp) return 0;
+  if (currency === "MYR") return Math.round((vp * MY_VP_PACK.myr) / MY_VP_PACK.vp);
+  const usd = (vp * US_VP_PACK.usd) / US_VP_PACK.vp;
+  if (currency === "USD") return Math.round(usd);
+  const rate = fxFromUsd[currency];
+  if (!rate) return Math.round(usd * (fxFromUsd.MYR || 4.0915));
+  return Math.round(usd * rate);
+}
+
+function formatShowcaseFiat(amount, currency) {
+  const code = String(currency || "MYR").toLowerCase();
+  return `${amount} ${code}`;
+}
+
+function paintShowcasePrice(item) {
+  const vp = item?.vp || 0;
+  const currency = showcaseCurrency();
+  if (showcasePriceFiat) showcasePriceFiat.textContent = vp ? formatShowcaseFiat(vpToFiat(vp, currency), currency) : "";
+  if (showcasePriceVp) showcasePriceVp.textContent = vp ? `${vp.toLocaleString("en-US")} VP` : "";
+}
+
+fetch("https://api.frankfurter.app/latest?from=USD")
+  .then((res) => (res.ok ? res.json() : null))
+  .then((data) => {
+    if (!data?.rates) return;
+    fxFromUsd = { USD: 1, ...data.rates };
+    if (showcaseCurrent) paintShowcasePrice(showcaseCurrent);
+  })
+  .catch(() => {});
 
 function skinPreviewAssets(skin) {
   const chromas = (skin.chromas || []).filter((chroma) => chroma.fullRender || chroma.swatch || chroma.displayIcon);
@@ -1390,6 +1719,7 @@ function rebuildShowcaseIndex() {
       const label = displayNameForSkin(skin, weapon.displayName, sequelThemes, themeByUuid);
       if (!label) continue;
       const assets = skinPreviewAssets(skin);
+      const tier = tierByUuid.get(skin.contentTierUuid);
       const item = {
         key: `${weapon.uuid}:${label}`,
         weaponUuid: weapon.uuid,
@@ -1397,6 +1727,7 @@ function rebuildShowcaseIndex() {
         label,
         family: collectionFamily(label),
         wave: sequelWaveFromLabel(label),
+        vp: TIER_VP[tier?.displayName] || 0,
         ...assets,
       };
       showcaseByKey.set(item.key, item);
@@ -1595,6 +1926,7 @@ function paintShowcase(item) {
   showcaseCurrent = item;
   showcaseKicker.textContent = item.weaponName;
   showcaseTitle.textContent = item.label;
+  paintShowcasePrice(item);
   setShowcaseVariant("Default");
   showcaseImage.src = item.render;
   showcaseImage.alt = `${item.label} ${item.weaponName}`;
@@ -1714,6 +2046,19 @@ function claimedCollectionsByWeapon() {
 }
 
 function syncCollectionLocks() {
+  if (recovering) {
+    for (const wrap of document.querySelectorAll(".skin-select")) {
+      const menu = wrap.skinMenu;
+      if (!menu) continue;
+      for (const option of menu.querySelectorAll(".skin-option")) {
+        if (option.classList.contains("skin-option-remove")) continue;
+        option.disabled = false;
+        option.classList.remove("skin-option-locked", "skin-option-lock-start");
+        option.setAttribute("aria-disabled", "false");
+      }
+    }
+    return;
+  }
   const claimed = claimedCollectionsByWeapon();
   for (const wrap of document.querySelectorAll(".skin-select")) {
     const menu = wrap.skinMenu;
@@ -1907,10 +2252,14 @@ function closeLabelWindows() {
 }
 
 function syncModeLocks() {
-  const locked = labelling || searching || rearranging;
+  const locked = labelling || searching || rearranging || recovering;
   sortEl.disabled = locked;
   if (filterBtn) filterBtn.disabled = locked;
-  if (labelBtn) labelBtn.disabled = searching || rearranging;
+  if (labelBtn) labelBtn.disabled = searching || rearranging || recovering;
+  if (searchInput) {
+    searchInput.disabled = recovering;
+    searchInput.tabIndex = recovering ? -1 : 0;
+  }
 }
 
 function setLabelling(on) {
@@ -1961,7 +2310,7 @@ function applySearchHits() {
 }
 
 function enterSearchMode() {
-  if (searching) return;
+  if (searching || recovering) return;
   if (labelling) exitLabellingMode();
   if (rearranging) exitRearrangeMode();
   searching = true;
@@ -2171,21 +2520,28 @@ function createSelect(options, pickId = "", weaponOrId = "", searchNames = null)
     wrap.dataset.theme = value ? match?.dataset.theme || "" : "";
     wrap.dataset.collection = value ? match?.dataset.collection || collectionFamily(value) : "";
     button.textContent = value ? label : "Choose skin";
+    if (recovering && wrap.classList.contains("is-recover") && !value) button.textContent = "No skins";
     syncSelectedState(wrap);
-    remove.hidden = !value;
+    remove.hidden = recovering || !value;
     for (const option of menu.querySelectorAll(".skin-option")) {
-      const isActive = Boolean(value) && option.dataset.value === value;
+      const isNone = option.classList.contains("skin-option-none");
+      const isActive = recovering && isNone ? !value && wrap.dataset.recoverSet === "1" : Boolean(value) && option.dataset.value === value;
       option.classList.toggle("is-active", isActive);
       option.setAttribute("aria-selected", isActive ? "true" : "false");
     }
     if (pickId) {
-      if (value) lockerPicks.set(pickId, value);
+      if (recovering && !currentUser) lockerPicks.delete(pickId);
+      else if (value) lockerPicks.set(pickId, value);
       else lockerPicks.delete(pickId);
       if (persist && previous !== value) lockerLabels.delete(pickId);
       applySkinLabel(wrap);
       syncSaveButton();
     }
-    if (persist) syncCollectionLocks();
+    if (recovering && wrap.classList.contains("is-recover")) {
+      wrap.dataset.recoverSet = "1";
+      queueRecoverCheck();
+    }
+    if (persist && !recovering) syncCollectionLocks();
   }
 
   for (const item of list) {
@@ -2440,6 +2796,7 @@ async function loadLockerTable() {
 }
 
 async function restoreLocker(user) {
+  lockerHydrated = false;
   applyIdentity(user);
   await loadPicks();
   await loadLockerTable();
@@ -2451,6 +2808,7 @@ async function lookupIdentity() {
   clearFieldError(usernameInput);
 
   if (sameUser(username)) return;
+  if (recovering) exitRecover();
 
   if (currentUser) {
     await clearSession({ keepUsername: true });
@@ -2502,6 +2860,17 @@ async function submitIdentity(event) {
   }
 
   try {
+    if (recoverPassed) {
+      await api("/api/recover/reset", {
+        method: "POST",
+        body: JSON.stringify({ token: recoverToken, password }),
+      });
+      passwordInput.value = "";
+      exitRecover();
+      showSecret(true);
+      showAppToast("reset password successful");
+      return;
+    }
     let exists = identityExists;
     if (exists === null) {
       const data = await api(`/api/identity?${new URLSearchParams({ username })}`);
@@ -2590,9 +2959,14 @@ exportBtn?.addEventListener("click", (event) => {
   event.preventDefault();
   exportLockerDocx();
 });
+forgotBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  startRecover();
+});
 logoutBtn.addEventListener("click", (event) => {
   event.preventDefault();
-  clearSession();
+  requestLogout();
 });
 usernameInput.addEventListener("input", scheduleIdentityLookup);
 passwordInput.addEventListener("input", () => clearFieldError(passwordInput));
@@ -2757,8 +3131,8 @@ showcaseInspect?.addEventListener("dblclick", () => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".meta-input-wrap")) closeWarnTips();
   if (!event.target.closest(".filter-wrap")) closeFilterMenu();
-  if (!event.target.closest(".theme-switch")) closeThemeMenu();
-  if (!event.target.closest(".crosshair-switch")) closeCrosshairPanel();
+  if (!event.target.closest(".header-profile")) closeThemeMenu();
+  if (!event.target.closest(".header-profile")) closeCrosshairPanel();
   if (!openSkinSelect) return;
   if (openSkinSelect.wrap.contains(event.target) || openSkinSelect.shell.contains(event.target)) return;
   closeSkinMenu();
@@ -2787,509 +3161,6 @@ window.addEventListener(
   },
   true
 );
-
-const XH_COLORS = {
-  0: "#FFFFFF",
-  1: "#00FF00",
-  2: "#7FFF00",
-  3: "#DFFF00",
-  4: "#FFFF00",
-  5: "#00FFFF",
-  6: "#FF00FF",
-  7: "#FF0000",
-};
-const XH_UNIT = 2;
-const XH_STORE = "valocker-crosshair";
-const XH_PASSTHROUGH = ["f", "s", "p", "0m", "0f", "0s", "0e", "1m", "1f", "1s", "1e"];
-
-function defaultCrosshair() {
-  return {
-    mode: "custom",
-    color: 0,
-    customHex: "FFFFFF",
-    outlines: true,
-    outlineOpacity: 0.5,
-    outlineThickness: 1,
-    centerDot: false,
-    centerDotOpacity: 1,
-    centerDotThickness: 2,
-    inner: { show: true, opacity: 0.8, length: 6, lengthV: 6, linked: true, thickness: 2, offset: 3 },
-    outer: { show: true, opacity: 0.35, length: 2, lengthV: 2, linked: true, thickness: 2, offset: 10 },
-    extra: {},
-  };
-}
-
-function xhBool(value, fallback) {
-  if (value === undefined || value === null || value === "") return fallback;
-  return value === true || value === 1 || value === "1";
-}
-
-function xhNum(value, fallback, min, max) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
-
-function xhHex(value) {
-  const raw = String(value || "").replace("#", "").trim().toUpperCase();
-  return /^[0-9A-F]{6}$/.test(raw) ? raw : "FFFFFF";
-}
-
-function parseCrosshairCode(raw) {
-  const tokens = String(raw || "").trim().split(";").filter((part) => part !== "");
-  let i = 0;
-  if (tokens[0] === "0") i = 1;
-  let section = "G";
-  const primary = {};
-  while (i < tokens.length) {
-    const key = tokens[i];
-    if (key === "P" || key === "A" || key === "S") {
-      section = key;
-      i += 1;
-      continue;
-    }
-    const val = tokens[i + 1];
-    if (val === undefined) break;
-    if (section === "P") primary[key] = val;
-    i += 2;
-  }
-  const next = defaultCrosshair();
-  next.mode = "custom";
-  next.color = xhNum(primary.c, 0, 0, 8);
-  next.customHex = xhHex(primary.u);
-  next.outlines = xhBool(primary.h, true);
-  next.outlineOpacity = xhNum(primary.o, 0.5, 0, 1);
-  next.outlineThickness = xhNum(primary.t, 1, 1, 6);
-  next.centerDot = xhBool(primary.d, false);
-  next.centerDotOpacity = xhNum(primary.a, 1, 0, 1);
-  next.centerDotThickness = xhNum(primary.z, 2, 1, 6);
-  next.inner.show = xhBool(primary["0b"], true);
-  next.inner.opacity = xhNum(primary["0a"], 0.8, 0, 1);
-  next.inner.length = xhNum(primary["0l"], 6, 0, 20);
-  next.inner.linked = xhBool(primary["0g"], true);
-  next.inner.lengthV = xhNum(primary["0v"], next.inner.length, 0, 20);
-  next.inner.thickness = xhNum(primary["0t"], 2, 0, 10);
-  next.inner.offset = xhNum(primary["0o"], 3, 0, 20);
-  next.outer.show = xhBool(primary["1b"], true);
-  next.outer.opacity = xhNum(primary["1a"], 0.35, 0, 1);
-  next.outer.length = xhNum(primary["1l"], 2, 0, 20);
-  next.outer.linked = xhBool(primary["1g"], true);
-  next.outer.lengthV = xhNum(primary["1v"], next.outer.length, 0, 20);
-  next.outer.thickness = xhNum(primary["1t"], 2, 0, 10);
-  next.outer.offset = xhNum(primary["1o"], 10, 0, 40);
-  next.extra = {};
-  for (const key of XH_PASSTHROUGH) {
-    if (primary[key] !== undefined) next.extra[key] = String(primary[key]);
-  }
-  return next;
-}
-
-function encodeCrosshairCode(spec) {
-  const pairs = [
-    ["c", spec.color],
-    ["u", `#${xhHex(spec.customHex)}`],
-    ["h", spec.outlines ? 1 : 0],
-    ["o", Number(spec.outlineOpacity.toFixed(3))],
-    ["t", spec.outlineThickness],
-    ["d", spec.centerDot ? 1 : 0],
-    ["a", Number(spec.centerDotOpacity.toFixed(3))],
-    ["z", spec.centerDotThickness],
-    ["0b", spec.inner.show ? 1 : 0],
-    ["0a", Number(spec.inner.opacity.toFixed(3))],
-    ["0l", spec.inner.length],
-    ["0g", spec.inner.linked ? 1 : 0],
-    ["0v", spec.inner.linked ? spec.inner.length : spec.inner.lengthV],
-    ["0t", spec.inner.thickness],
-    ["0o", spec.inner.offset],
-    ["1b", spec.outer.show ? 1 : 0],
-    ["1a", Number(spec.outer.opacity.toFixed(3))],
-    ["1l", spec.outer.length],
-    ["1g", spec.outer.linked ? 1 : 0],
-    ["1v", spec.outer.linked ? spec.outer.length : spec.outer.lengthV],
-    ["1t", spec.outer.thickness],
-    ["1o", spec.outer.offset],
-  ];
-  for (const key of XH_PASSTHROUGH) {
-    if (spec.extra[key] !== undefined) pairs.push([key, spec.extra[key]]);
-  }
-  return `0;P;${pairs.flat().join(";")}`;
-}
-
-function crosshairFill(spec) {
-  if (spec.color === 8) return `#${xhHex(spec.customHex)}`;
-  return XH_COLORS[spec.color] || XH_COLORS[0];
-}
-
-function renderCrosshair(host, spec) {
-  if (!host) return;
-  host.replaceChildren();
-  const color = crosshairFill(spec);
-  const outline = spec.outlines ? `${spec.outlineThickness}px` : "0px";
-  const outlineA = spec.outlines ? spec.outlineOpacity : 0;
-
-  const addPiece = (left, top, width, height, opacity) => {
-    if (width <= 0 || height <= 0) return;
-    const el = document.createElement("div");
-    el.className = "crosshair-piece";
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    el.style.width = `${width}px`;
-    el.style.height = `${height}px`;
-    el.style.setProperty("--xh-color", color);
-    el.style.setProperty("--xh-opacity", String(opacity));
-    el.style.setProperty("--xh-outline", outline);
-    el.style.setProperty("--xh-outline-a", String(outlineA));
-    host.append(el);
-  };
-
-  const paintLines = (lines) => {
-    if (!lines.show) return;
-    const thick = lines.thickness * XH_UNIT;
-    const lenH = lines.length * XH_UNIT;
-    const lenV = (lines.linked ? lines.length : lines.lengthV) * XH_UNIT;
-    const gap = lines.offset * XH_UNIT;
-    addPiece(gap, -thick / 2, lenH, thick, lines.opacity);
-    addPiece(-(gap + lenH), -thick / 2, lenH, thick, lines.opacity);
-    addPiece(-thick / 2, -(gap + lenV), thick, lenV, lines.opacity);
-    addPiece(-thick / 2, gap, thick, lenV, lines.opacity);
-  };
-
-  paintLines(spec.inner);
-  paintLines(spec.outer);
-  if (spec.centerDot) {
-    const size = spec.centerDotThickness * XH_UNIT;
-    addPiece(-size / 2, -size / 2, size, size, spec.centerDotOpacity);
-  }
-}
-
-const crosshairToggle = document.getElementById("crosshair-toggle");
-const crosshairPanel = document.getElementById("crosshair-panel");
-const crosshairPreview = document.getElementById("crosshair-preview");
-const crosshairHud = document.getElementById("crosshair-hud");
-const xhFields = {
-  color: document.getElementById("xh-color"),
-  hex: document.getElementById("xh-hex"),
-  hexRow: document.getElementById("xh-hex-row"),
-  outline: document.getElementById("xh-outline"),
-  outlineA: document.getElementById("xh-outline-a"),
-  outlineT: document.getElementById("xh-outline-t"),
-  dot: document.getElementById("xh-dot"),
-  dotA: document.getElementById("xh-dot-a"),
-  dotT: document.getElementById("xh-dot-t"),
-  inOn: document.getElementById("xh-in-on"),
-  inA: document.getElementById("xh-in-a"),
-  inL: document.getElementById("xh-in-l"),
-  inG: document.getElementById("xh-in-g"),
-  inV: document.getElementById("xh-in-v"),
-  inVRow: document.getElementById("xh-in-v-row"),
-  inT: document.getElementById("xh-in-t"),
-  inO: document.getElementById("xh-in-o"),
-  outOn: document.getElementById("xh-out-on"),
-  outA: document.getElementById("xh-out-a"),
-  outL: document.getElementById("xh-out-l"),
-  outG: document.getElementById("xh-out-g"),
-  outV: document.getElementById("xh-out-v"),
-  outVRow: document.getElementById("xh-out-v-row"),
-  outT: document.getElementById("xh-out-t"),
-  outO: document.getElementById("xh-out-o"),
-  code: document.getElementById("xh-code"),
-  profile: document.getElementById("xh-profile"),
-  profileAdd: document.getElementById("xh-profile-add"),
-};
-let crosshair = defaultCrosshair();
-let xhBundle = defaultCrosshairBundle();
-let crosshairOverText = false;
-let xhSaveTimer = 0;
-
-function defaultCrosshairBundle() {
-  const first = defaultCrosshair();
-  delete first.mode;
-  first.name = "Profile 1";
-  const second = defaultCrosshair();
-  delete second.mode;
-  second.name = "Profile 2";
-  return { mode: "custom", active: 0, profiles: [first, second] };
-}
-
-function specFromProfile(profile) {
-  const base = defaultCrosshair();
-  return {
-    ...base,
-    ...profile,
-    mode: xhBundle.mode,
-    inner: { ...base.inner, ...(profile.inner || {}) },
-    outer: { ...base.outer, ...(profile.outer || {}) },
-    extra: profile.extra && typeof profile.extra === "object" ? profile.extra : {},
-    name: profile.name,
-  };
-}
-
-function writeActiveProfile() {
-  const index = Math.min(xhBundle.active, xhBundle.profiles.length - 1);
-  const { mode, ...spec } = crosshair;
-  xhBundle.mode = mode;
-  xhBundle.active = index;
-  xhBundle.profiles[index] = { ...spec, name: xhBundle.profiles[index]?.name || `Profile ${index + 1}` };
-}
-
-function adoptCrosshairBundle(raw) {
-  const fresh = defaultCrosshairBundle();
-  if (!raw || typeof raw !== "object") {
-    xhBundle = fresh;
-    crosshair = specFromProfile(xhBundle.profiles[0]);
-    crosshair.mode = "custom";
-    return;
-  }
-  if (Array.isArray(raw.profiles) && raw.profiles.length) {
-    xhBundle = {
-      mode: raw.mode === "default" ? "default" : "custom",
-      active: xhNum(raw.active, 0, 0, Math.min(7, raw.profiles.length - 1)),
-      profiles: raw.profiles.slice(0, 8).map((item, index) => {
-        const spec = specFromProfile({ ...fresh.profiles[0], ...item });
-        delete spec.mode;
-        spec.name = String(item?.name || `Profile ${index + 1}`).slice(0, 24);
-        return spec;
-      }),
-    };
-    if (xhBundle.profiles.length < 2) {
-      const extra = defaultCrosshair();
-      delete extra.mode;
-      extra.name = "Profile 2";
-      xhBundle.profiles.push(extra);
-    }
-  } else {
-    const spec = specFromProfile({ ...fresh.profiles[0], ...raw });
-    delete spec.mode;
-    spec.name = "Profile 1";
-    xhBundle = { mode: "custom", active: 0, profiles: [spec, fresh.profiles[1]] };
-  }
-  const active = xhBundle.profiles[xhBundle.active] || xhBundle.profiles[0];
-  crosshair = specFromProfile(active);
-  crosshair.mode = xhBundle.mode;
-}
-
-function crosshairStorageKey() {
-  const name = (currentUser?.username || currentUsername() || "").trim().toLowerCase();
-  return name ? `${XH_STORE}:${name}` : XH_STORE;
-}
-
-function fillCrosshairProfiles() {
-  if (!xhFields.profile) return;
-  xhFields.profile.replaceChildren();
-  xhBundle.profiles.forEach((profile, index) => {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = profile.name || `Profile ${index + 1}`;
-    xhFields.profile.append(option);
-  });
-  xhFields.profile.value = String(xhBundle.active);
-  if (xhFields.profileAdd) xhFields.profileAdd.disabled = xhBundle.profiles.length >= 8;
-}
-
-function closeCrosshairPanel() {
-  if (!crosshairPanel || !crosshairToggle) return;
-  crosshairPanel.hidden = true;
-  crosshairToggle.setAttribute("aria-expanded", "false");
-  document.documentElement.classList.remove("is-xh-panel");
-}
-
-function persistCrosshair() {
-  writeActiveProfile();
-  const payload = { ...xhBundle, mode: crosshair.mode };
-  try {
-    localStorage.setItem(crosshairStorageKey(), JSON.stringify(payload));
-  } catch {
-    /* ignore */
-  }
-  if (!currentUser) return;
-  window.clearTimeout(xhSaveTimer);
-  xhSaveTimer = window.setTimeout(() => {
-    api("/api/picks", {
-      method: "POST",
-      body: JSON.stringify({ crosshair: payload }),
-    }).catch(() => {});
-  }, 400);
-}
-
-function syncCrosshairFields() {
-  if (!xhFields.color) return;
-  xhFields.color.value = String(crosshair.color);
-  xhFields.hex.value = `#${xhHex(crosshair.customHex)}`;
-  xhFields.hexRow.hidden = crosshair.color !== 8;
-  xhFields.outline.checked = crosshair.outlines;
-  xhFields.outlineA.value = String(crosshair.outlineOpacity);
-  xhFields.outlineT.value = String(crosshair.outlineThickness);
-  xhFields.dot.checked = crosshair.centerDot;
-  xhFields.dotA.value = String(crosshair.centerDotOpacity);
-  xhFields.dotT.value = String(crosshair.centerDotThickness);
-  xhFields.inOn.checked = crosshair.inner.show;
-  xhFields.inA.value = String(crosshair.inner.opacity);
-  xhFields.inL.value = String(crosshair.inner.length);
-  xhFields.inG.checked = crosshair.inner.linked;
-  xhFields.inV.value = String(crosshair.inner.lengthV);
-  xhFields.inVRow.hidden = crosshair.inner.linked;
-  xhFields.inT.value = String(crosshair.inner.thickness);
-  xhFields.inO.value = String(crosshair.inner.offset);
-  xhFields.outOn.checked = crosshair.outer.show;
-  xhFields.outA.value = String(crosshair.outer.opacity);
-  xhFields.outL.value = String(crosshair.outer.length);
-  xhFields.outG.checked = crosshair.outer.linked;
-  xhFields.outV.value = String(crosshair.outer.lengthV);
-  xhFields.outVRow.hidden = crosshair.outer.linked;
-  xhFields.outT.value = String(crosshair.outer.thickness);
-  xhFields.outO.value = String(crosshair.outer.offset);
-  xhFields.code.value = encodeCrosshairCode(crosshair);
-  fillCrosshairProfiles();
-  for (const button of crosshairPanel?.querySelectorAll("[data-xh-mode]") || []) {
-    button.classList.toggle("is-on", button.dataset.xhMode === crosshair.mode);
-  }
-}
-
-function readCrosshairFields() {
-  crosshair.color = xhNum(xhFields.color.value, 0, 0, 8);
-  crosshair.customHex = xhHex(xhFields.hex.value);
-  crosshair.outlines = xhFields.outline.checked;
-  crosshair.outlineOpacity = xhNum(xhFields.outlineA.value, 0.5, 0, 1);
-  crosshair.outlineThickness = xhNum(xhFields.outlineT.value, 1, 1, 6);
-  crosshair.centerDot = xhFields.dot.checked;
-  crosshair.centerDotOpacity = xhNum(xhFields.dotA.value, 1, 0, 1);
-  crosshair.centerDotThickness = xhNum(xhFields.dotT.value, 2, 1, 6);
-  crosshair.inner.show = xhFields.inOn.checked;
-  crosshair.inner.opacity = xhNum(xhFields.inA.value, 0.8, 0, 1);
-  crosshair.inner.length = xhNum(xhFields.inL.value, 6, 0, 20);
-  crosshair.inner.linked = xhFields.inG.checked;
-  crosshair.inner.lengthV = xhNum(xhFields.inV.value, crosshair.inner.length, 0, 20);
-  if (crosshair.inner.linked) crosshair.inner.lengthV = crosshair.inner.length;
-  crosshair.inner.thickness = xhNum(xhFields.inT.value, 2, 0, 10);
-  crosshair.inner.offset = xhNum(xhFields.inO.value, 3, 0, 20);
-  crosshair.outer.show = xhFields.outOn.checked;
-  crosshair.outer.opacity = xhNum(xhFields.outA.value, 0.35, 0, 1);
-  crosshair.outer.length = xhNum(xhFields.outL.value, 2, 0, 20);
-  crosshair.outer.linked = xhFields.outG.checked;
-  crosshair.outer.lengthV = xhNum(xhFields.outV.value, crosshair.outer.length, 0, 20);
-  if (crosshair.outer.linked) crosshair.outer.lengthV = crosshair.outer.length;
-  crosshair.outer.thickness = xhNum(xhFields.outT.value, 2, 0, 10);
-  crosshair.outer.offset = xhNum(xhFields.outO.value, 10, 0, 40);
-}
-
-function isCrosshairTextTarget(node) {
-  if (!node || node === document.body || node === document.documentElement) return false;
-  const el = node.nodeType === 1 ? node : node.parentElement;
-  if (!el) return false;
-  if (el.isContentEditable) return true;
-  const tag = el.tagName;
-  if (tag === "TEXTAREA") return true;
-  if (tag !== "INPUT") return false;
-  const type = (el.type || "text").toLowerCase();
-  return !["button", "submit", "checkbox", "radio", "range", "color", "file", "reset", "image"].includes(type);
-}
-
-function applyCrosshair() {
-  const on = crosshair.mode === "custom";
-  document.body.classList.toggle("is-crosshair", on);
-  renderCrosshair(crosshairPreview, crosshair);
-  renderCrosshair(crosshairHud, crosshair);
-  if (crosshairHud) crosshairHud.hidden = !on || crosshairOverText;
-  persistCrosshair();
-}
-
-function setCrosshairMode(mode) {
-  crosshair.mode = mode === "custom" ? "custom" : "default";
-  syncCrosshairFields();
-  applyCrosshair();
-}
-
-function loadCrosshair(saved) {
-  if (saved && typeof saved === "object") {
-    adoptCrosshairBundle(saved);
-  } else {
-    try {
-      adoptCrosshairBundle(JSON.parse(localStorage.getItem(crosshairStorageKey()) || "null"));
-    } catch {
-      adoptCrosshairBundle(null);
-    }
-  }
-  syncCrosshairFields();
-  applyCrosshair();
-}
-
-crosshairToggle?.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (!crosshairPanel) return;
-  const open = crosshairPanel.hidden;
-  crosshairPanel.hidden = !open;
-  crosshairToggle.setAttribute("aria-expanded", open ? "true" : "false");
-  document.documentElement.classList.toggle("is-xh-panel", open);
-});
-
-crosshairPanel?.addEventListener("click", (event) => {
-  const modeBtn = event.target.closest("[data-xh-mode]");
-  if (modeBtn) setCrosshairMode(modeBtn.dataset.xhMode);
-});
-
-crosshairPanel?.addEventListener("input", (event) => {
-  if (event.target === xhFields.code || event.target === xhFields.profile) return;
-  readCrosshairFields();
-  syncCrosshairFields();
-  applyCrosshair();
-});
-
-document.getElementById("xh-apply")?.addEventListener("click", () => {
-  try {
-    const next = parseCrosshairCode(xhFields.code.value);
-    next.mode = "custom";
-    next.extra = { ...crosshair.extra, ...next.extra };
-    crosshair = next;
-    writeActiveProfile();
-    syncCrosshairFields();
-    applyCrosshair();
-  } catch {
-    /* keep current */
-  }
-});
-
-xhFields.profile?.addEventListener("change", () => {
-  writeActiveProfile();
-  xhBundle.active = xhNum(xhFields.profile.value, 0, 0, xhBundle.profiles.length - 1);
-  crosshair = specFromProfile(xhBundle.profiles[xhBundle.active]);
-  syncCrosshairFields();
-  applyCrosshair();
-});
-
-xhFields.profileAdd?.addEventListener("click", (event) => {
-  event.stopPropagation();
-  if (xhBundle.profiles.length >= 8) return;
-  writeActiveProfile();
-  const next = defaultCrosshair();
-  delete next.mode;
-  next.name = `Profile ${xhBundle.profiles.length + 1}`;
-  xhBundle.profiles.push(next);
-  xhBundle.active = xhBundle.profiles.length - 1;
-  crosshair = specFromProfile(next);
-  syncCrosshairFields();
-  applyCrosshair();
-});
-
-xhFields.code?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    document.getElementById("xh-apply")?.click();
-  }
-});
-
-document.addEventListener("pointermove", (event) => {
-  if (!crosshairHud || crosshair.mode !== "custom") return;
-  crosshairHud.style.left = `${event.clientX}px`;
-  crosshairHud.style.top = `${event.clientY}px`;
-  crosshairOverText = isCrosshairTextTarget(event.target);
-  crosshairHud.hidden = crosshairOverText;
-});
-
-document.addEventListener("pointerleave", () => {
-  if (crosshairHud) crosshairHud.hidden = true;
-});
-
-loadCrosshair();
 
 window.addEventListener("resize", () => {
   closeSkinMenu();

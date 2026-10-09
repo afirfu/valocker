@@ -42,5 +42,10 @@ create table if not exists crosshairs (
   payload jsonb not null
 );
 
-revoke all on table users, sessions, picks, labels, layouts, crosshairs from anon, authenticated;
-grant all on table users, sessions, picks, labels, layouts, crosshairs to service_role;
+create table if not exists avatars (
+  user_id bigint primary key references users (id) on delete cascade,
+  agent text not null
+);
+
+revoke all on table users, sessions, picks, labels, layouts, crosshairs, avatars from anon, authenticated;
+grant all on table users, sessions, picks, labels, layouts, crosshairs, avatars to service_role;

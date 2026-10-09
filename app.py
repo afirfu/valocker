@@ -25,17 +25,25 @@ from server import (
     user_public,
 )
 from store import (
+    check_recover,
     create_user,
     delete_session,
     find_user,
+    empty_overwrite_blocked,
+    load_agent,
     load_crosshair,
     load_layout,
     load_locker,
+    save_agent,
     save_crosshair,
     save_layout,
     save_locker,
+    sanitize_agent,
     sanitize_crosshair,
+    recover_reset_user,
     sanitize_layout,
+    start_recover,
+    update_password,
     user_exists,
 )
 
@@ -104,6 +112,16 @@ def theme_js():
     return send_from_directory(PUBLIC, "theme.js")
 
 
+@app.get("/profile.js")
+def profile_js():
+    return send_from_directory(PUBLIC, "profile.js")
+
+
+@app.get("/crosshair.js")
+def crosshair_js():
+    return send_from_directory(PUBLIC, "crosshair.js")
+
+
 @app.get("/built.js")
 def built_js():
     return send_from_directory(PUBLIC, "built.js")
@@ -140,6 +158,7 @@ def api_get_picks():
         "labels": labels,
         "layout": load_layout(user["id"]),
         "crosshair": load_crosshair(user["id"]),
+        "agent": load_agent(user["id"]),
     })
 
 
@@ -177,6 +196,55 @@ def api_login():
     return set_session_cookie(response, token)
 
 
+@app.post("/api/recover/start")
+def api_recover_start():
+    if current_user():
+        return jsonify({"error": "Already logged in"}), HTTPStatus.BAD_REQUEST
+    body = request.get_json(silent=True) or {}
+    username = normalize_username(str(body.get("username") or ""))
+    slots = body.get("slots")
+    if not username:
+        return jsonify({"error": "Username is required"}), HTTPStatus.BAD_REQUEST
+    if not isinstance(slots, list):
+        return jsonify({"error": "Locker is not ready"}), HTTPStatus.BAD_REQUEST
+    try:
+        return jsonify(start_recover(username, slots))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), HTTPStatus.BAD_REQUEST
+
+
+@app.post("/api/recover/check")
+def api_recover_check():
+    if current_user():
+        return jsonify({"error": "Already logged in"}), HTTPStatus.BAD_REQUEST
+    body = request.get_json(silent=True) or {}
+    token = str(body.get("token") or "")
+    guesses = body.get("picks")
+    if not isinstance(guesses, dict):
+        guesses = {}
+    try:
+        return jsonify(check_recover(token, guesses))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), HTTPStatus.BAD_REQUEST
+
+
+@app.post("/api/recover/reset")
+def api_recover_reset():
+    if current_user():
+        return jsonify({"error": "Already logged in"}), HTTPStatus.BAD_REQUEST
+    body = request.get_json(silent=True) or {}
+    token = str(body.get("token") or "")
+    password = str(body.get("password") or "")
+    data = recover_reset_user(token)
+    if not data:
+        return jsonify({"error": "Reset is not ready"}), HTTPStatus.BAD_REQUEST
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), HTTPStatus.BAD_REQUEST
+    salt, digest = hash_password(password)
+    update_password(int(data["u"]), salt, digest)
+    return jsonify({"ok": True})
+
+
 @app.post("/api/logout")
 def api_logout():
     from http.cookies import SimpleCookie
@@ -199,7 +267,7 @@ def api_save_picks():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     body = request.get_json(silent=True) or {}
     picks = body.get("picks")
-    if not isinstance(picks, dict) and "crosshair" not in body and "layout" not in body:
+    if not isinstance(picks, dict) and "crosshair" not in body and "layout" not in body and "agent" not in body:
         return jsonify({"error": "Picks are required"}), HTTPStatus.BAD_REQUEST
     if isinstance(picks, dict):
         cleaned = []
@@ -236,11 +304,15 @@ def api_save_picks():
                 if not color and not slant and not bold and not underline:
                     continue
                 label_items.append((pick_key, color, slant, bold, underline))
+        if empty_overwrite_blocked(user["id"], cleaned):
+            return jsonify({"error": "Can't overwrite a saved locker with an empty one"}), HTTPStatus.CONFLICT
         save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
     if "layout" in body:
         save_layout(user["id"], sanitize_layout(body.get("layout")))
     if "crosshair" in body:
         save_crosshair(user["id"], sanitize_crosshair(body.get("crosshair")))
+    if "agent" in body:
+        save_agent(user["id"], sanitize_agent(body.get("agent")))
     return jsonify({"ok": True})
 
 

@@ -12,7 +12,7 @@
         }
       } catch (e) {}
     </script>
-    <link rel="stylesheet" href="./chrome.css">
+    <link rel="stylesheet" href="./chrome.css?v=pfp3">
     <style>
         html.is-built,
         html.is-built body {
@@ -442,13 +442,118 @@
     <header class="site-header">
         <h1><a href="./index.html">VaLocker</a></h1>
         <div class="header-tools">
-            <a class="header-link" href="./built.html" aria-current="page">Built+</a>
-            <div class="theme-switch">
-                <button type="button" class="theme-swatch theme-current theme-swatch-green" id="theme-current" aria-label="Color: Green" aria-haspopup="listbox" aria-expanded="false"></button>
-                <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
-                    <button type="button" class="theme-swatch theme-swatch-green is-on" data-theme="green" aria-label="Green"></button>
-                    <button type="button" class="theme-swatch theme-swatch-dark" data-theme="dark" aria-label="Dark"></button>
-                    <button type="button" class="theme-swatch theme-swatch-light" data-theme="light" aria-label="Light"></button>
+            <a class="header-link is-built-nav" href="./index.html" aria-label="Back to locker">
+                <span class="header-link-swap">
+                    <span class="header-link-label">Built+</span>
+                    <span class="header-link-arrow" aria-hidden="true"></span>
+                </span>
+            </a>
+            <div class="header-profile" id="header-profile">
+                <button type="button" class="profile-pfp" id="profile-pfp" aria-label="Profile menu" aria-haspopup="true" aria-expanded="false">
+                    <img class="profile-pfp-img" id="profile-pfp-img" alt="" draggable="false">
+                    <span class="profile-pfp-empty" aria-hidden="true"></span>
+                    <span class="profile-pfp-arrow" aria-hidden="true"></span>
+                </button>
+                <script>
+                (function () {
+                  try {
+                    var btn = document.getElementById("profile-pfp");
+                    var img = document.getElementById("profile-pfp-img");
+                    if (!btn) return;
+                    var user = (localStorage.getItem("valocker-username") || "").trim().toLowerCase();
+                    if (!user) {
+                      btn.classList.add("is-empty");
+                      return;
+                    }
+                    var raw = localStorage.getItem("valocker-agent:" + user);
+                    if (!raw) {
+                      btn.classList.add("is-empty");
+                      return;
+                    }
+                    var rec = raw.charAt(0) === "{" ? JSON.parse(raw) : { uuid: raw, src: "" };
+                    if (rec && rec.src && img) {
+                      btn.classList.add("has-pfp");
+                      img.src = rec.src;
+                      img.hidden = false;
+                    } else if (rec && rec.uuid) {
+                      btn.classList.add("has-pfp");
+                    } else {
+                      btn.classList.add("is-empty");
+                    }
+                  } catch (e) {}
+                })();
+                </script>
+                <div class="profile-menu" id="profile-menu" hidden>
+                    <button type="button" class="profile-menu-btn" id="profile-open">Profile</button>
+                    <div class="profile-theme">
+                        <button type="button" class="profile-menu-btn" id="theme-open" aria-haspopup="listbox" aria-expanded="false">Theme</button>
+                        <div class="theme-menu" id="theme-menu" hidden role="listbox" aria-label="Color">
+                            <button type="button" class="theme-swatch theme-swatch-green is-on" data-theme="green" aria-label="Green"></button>
+                            <button type="button" class="theme-swatch theme-swatch-dark" data-theme="dark" aria-label="Dark"></button>
+                            <button type="button" class="theme-swatch theme-swatch-light" data-theme="light" aria-label="Light"></button>
+                        </div>
+                    </div>
+                    <button type="button" class="profile-menu-btn" id="crosshair-toggle" aria-haspopup="dialog" aria-expanded="false">Crosshair</button>
+                </div>
+                <div class="profile-picker" id="profile-picker" hidden>
+                    <div class="profile-picker-grid" id="profile-picker-grid"></div>
+                </div>
+                <div class="crosshair-switch">
+                    <div id="crosshair-panel" class="crosshair-panel" hidden>
+                        <div class="crosshair-preview"><div class="crosshair-hud" id="crosshair-preview"></div></div>
+                        <div class="crosshair-profile-row">
+                            <select id="xh-profile" aria-label="Crosshair profile"></select>
+                            <button type="button" id="xh-profile-add" aria-label="Add profile">+</button>
+                        </div>
+                        <div class="crosshair-modes">
+                            <button type="button" data-xh-mode="default">Default</button>
+                            <button type="button" data-xh-mode="custom">Custom</button>
+                        </div>
+                        <div class="crosshair-fields">
+                            <label>Color
+                                <select id="xh-color">
+                                    <option value="0">White</option>
+                                    <option value="1">Green</option>
+                                    <option value="2">Yellow Green</option>
+                                    <option value="3">Green Yellow</option>
+                                    <option value="4">Yellow</option>
+                                    <option value="5">Cyan</option>
+                                    <option value="6">Pink</option>
+                                    <option value="7">Red</option>
+                                    <option value="8">Custom</option>
+                                </select>
+                            </label>
+                            <label id="xh-hex-row" hidden>Custom
+                                <input id="xh-hex" type="text" maxlength="7" spellcheck="false" placeholder="#FFFFFF">
+                            </label>
+                            <label class="crosshair-check"><span>Outlines</span><input id="xh-outline" type="checkbox"></label>
+                            <label>Outline opacity <input id="xh-outline-a" type="range" min="0" max="1" step="0.05"></label>
+                            <label>Outline thickness <input id="xh-outline-t" type="range" min="1" max="6" step="1"></label>
+                            <label class="crosshair-check"><span>Center dot</span><input id="xh-dot" type="checkbox"></label>
+                            <label>Dot opacity <input id="xh-dot-a" type="range" min="0" max="1" step="0.05"></label>
+                            <label>Dot thickness <input id="xh-dot-t" type="range" min="1" max="6" step="1"></label>
+                            <div class="crosshair-legend">Inner lines</div>
+                            <label class="crosshair-check"><span>Show</span><input id="xh-in-on" type="checkbox"></label>
+                            <label>Opacity <input id="xh-in-a" type="range" min="0" max="1" step="0.05"></label>
+                            <label>Length <input id="xh-in-l" type="range" min="0" max="20" step="1"></label>
+                            <label class="crosshair-check"><span>Link vertical</span><input id="xh-in-g" type="checkbox"></label>
+                            <label id="xh-in-v-row" hidden>Vertical length <input id="xh-in-v" type="range" min="0" max="20" step="1"></label>
+                            <label>Thickness <input id="xh-in-t" type="range" min="0" max="10" step="1"></label>
+                            <label>Offset <input id="xh-in-o" type="range" min="0" max="20" step="1"></label>
+                            <div class="crosshair-legend">Outer lines</div>
+                            <label class="crosshair-check"><span>Show</span><input id="xh-out-on" type="checkbox"></label>
+                            <label>Opacity <input id="xh-out-a" type="range" min="0" max="1" step="0.05"></label>
+                            <label>Length <input id="xh-out-l" type="range" min="0" max="20" step="1"></label>
+                            <label class="crosshair-check"><span>Link vertical</span><input id="xh-out-g" type="checkbox"></label>
+                            <label id="xh-out-v-row" hidden>Vertical length <input id="xh-out-v" type="range" min="0" max="20" step="1"></label>
+                            <label>Thickness <input id="xh-out-t" type="range" min="0" max="10" step="1"></label>
+                            <label>Offset <input id="xh-out-o" type="range" min="0" max="40" step="1"></label>
+                        </div>
+                        <div class="crosshair-code-row">
+                            <input id="xh-code" class="crosshair-code" type="text" spellcheck="false" aria-label="Valorant crosshair code">
+                            <button type="button" id="xh-apply">Apply</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -489,7 +594,10 @@
             <div class="built-board" id="built-board"></div>
         </div>
     </div>
+    <div id="crosshair-hud" class="crosshair-hud" hidden></div>
     <script src="./theme.js"></script>
+    <script src="./profile.js?v=pfp4"></script>
+    <script src="./crosshair.js"></script>
     <script src="./built.js?v=bp4"></script>
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };

@@ -19,19 +19,27 @@ from export_docx import build_locker_docx, sanitize_groups
 from kill_audio import resolve_kill_audio
 from store import (
     _db_lock,
+    check_recover,
     connect,
     create_session,
     create_user,
     delete_session,
+    empty_overwrite_blocked,
     find_user,
+    load_agent,
     load_crosshair,
     load_layout,
     load_locker,
+    save_agent,
     save_crosshair,
     save_layout,
     save_locker,
+    sanitize_agent,
     sanitize_crosshair,
+    recover_reset_user,
     sanitize_layout,
+    start_recover,
+    update_password,
     use_supabase,
     user_exists,
     user_from_session,
@@ -118,6 +126,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS crosshairs (
             user_id INTEGER PRIMARY KEY,
             payload TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS avatars (
+            user_id INTEGER PRIMARY KEY,
+            agent TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """
@@ -358,6 +372,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                 "labels": labels,
                 "layout": load_layout(user["id"]),
                 "crosshair": load_crosshair(user["id"]),
+                "agent": load_agent(user["id"]),
             })
             return
         if parsed.path == "/api/kill-audio":
@@ -377,6 +392,9 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             "/api/logout": self.handle_logout,
             "/api/picks": self.handle_save_pick,
             "/api/export": self.handle_export,
+            "/api/recover/start": self.handle_recover_start,
+            "/api/recover/check": self.handle_recover_check,
+            "/api/recover/reset": self.handle_recover_reset,
         }
         handler = routes.get(parsed.path)
         if not handler:
@@ -427,6 +445,43 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             extra_headers=[("Set-Cookie", self.session_cookie_header(token))],
         )
 
+    def handle_recover_start(self) -> None:
+        if self.current_user():
+            raise ValueError("Already logged in")
+        body = self.read_json()
+        username = normalize_username(str(body.get("username") or ""))
+        slots = body.get("slots")
+        if not username:
+            raise ValueError("Username is required")
+        if not isinstance(slots, list):
+            raise ValueError("Locker is not ready")
+        self.send_json(start_recover(username, slots))
+
+    def handle_recover_check(self) -> None:
+        if self.current_user():
+            raise ValueError("Already logged in")
+        body = self.read_json()
+        token = str(body.get("token") or "")
+        guesses = body.get("picks")
+        if not isinstance(guesses, dict):
+            guesses = {}
+        self.send_json(check_recover(token, guesses))
+
+    def handle_recover_reset(self) -> None:
+        if self.current_user():
+            raise ValueError("Already logged in")
+        body = self.read_json()
+        token = str(body.get("token") or "")
+        password = str(body.get("password") or "")
+        data = recover_reset_user(token)
+        if not data:
+            raise ValueError("Reset is not ready")
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        salt, digest = hash_password(password)
+        update_password(int(data["u"]), salt, digest)
+        self.send_json({"ok": True})
+
     def handle_logout(self) -> None:
         token = self.current_token()
         if token:
@@ -440,7 +495,7 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             return
         body = self.read_json()
         picks = body.get("picks")
-        if not isinstance(picks, dict) and "crosshair" not in body and "layout" not in body:
+        if not isinstance(picks, dict) and "crosshair" not in body and "layout" not in body and "agent" not in body:
             raise ValueError("Picks are required")
         if isinstance(picks, dict):
             cleaned = []
@@ -477,11 +532,19 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
                     if not color and not slant and not bold and not underline:
                         continue
                     label_items.append((pick_key, color, slant, bold, underline))
+            if empty_overwrite_blocked(user["id"], cleaned):
+                self.send_json(
+                    {"error": "Can't overwrite a saved locker with an empty one"},
+                    HTTPStatus.CONFLICT,
+                )
+                return
             save_locker(user["id"], cleaned, label_items, iso(utc_now()), isinstance(raw_labels, dict))
         if "layout" in body:
             save_layout(user["id"], sanitize_layout(body.get("layout")))
         if "crosshair" in body:
             save_crosshair(user["id"], sanitize_crosshair(body.get("crosshair")))
+        if "agent" in body:
+            save_agent(user["id"], sanitize_agent(body.get("agent")))
         self.send_json({"ok": True})
 
     def handle_export(self) -> None:

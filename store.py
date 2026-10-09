@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import binascii
+import base64
+import hashlib
+import hmac
 import json
 import os
+import secrets as _secrets
 import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -141,6 +147,128 @@ def create_user(username: str, password_salt: str, password_hash: str, created_a
             conn.close()
 
 
+def update_password(user_id: int, password_salt: str, password_hash: str) -> None:
+    if use_supabase():
+        _sb_request(
+            "PATCH",
+            "users",
+            f"id=eq.{user_id}",
+            body={"password_salt": password_salt, "password_hash": password_hash},
+            extra={"Prefer": "return=minimal"},
+        )
+        return
+    with _db_lock:
+        conn = connect()
+        try:
+            conn.execute(
+                "UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?",
+                (password_salt, password_hash, user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _recover_secret() -> bytes:
+    return (os.environ.get("SUPABASE_SECRET_KEY") or "valocker-local-recover").encode()
+
+
+def _b64(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _unb64(text: str) -> bytes:
+    pad = "=" * (-len(text) % 4)
+    return base64.urlsafe_b64decode(text + pad)
+
+
+def hash_recover_answer(key: str, answer: str) -> str:
+    return hmac.new(_recover_secret(), f"{key}\0{answer}".encode(), hashlib.sha256).hexdigest()
+
+
+def sign_recover(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    sig = hmac.new(_recover_secret(), raw, hashlib.sha256).hexdigest()
+    return f"{_b64(raw)}.{sig}"
+
+
+def read_recover(token: str) -> dict | None:
+    try:
+        blob, sig = str(token or "").split(".", 1)
+        raw = _unb64(blob)
+        expect = hmac.new(_recover_secret(), raw, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expect, sig):
+            return None
+        data = json.loads(raw.decode())
+        if int(data.get("e") or 0) < time.time():
+            return None
+        return data
+    except (ValueError, json.JSONDecodeError, TypeError, binascii.Error):
+        return None
+
+
+def start_recover(username: str, slots: list) -> dict:
+    user = find_user(username)
+    if not user:
+        raise ValueError("Can't reset that account")
+    picks, _labels = load_locker(int(user["id"]))
+    viable: list[str] = []
+    seen: set[str] = set()
+    for raw in slots:
+        key = str(raw or "").strip()
+        if not key or ":" not in key or key in seen:
+            continue
+        seen.add(key)
+        viable.append(key)
+    if len(viable) < 3:
+        raise ValueError("Locker is not ready")
+    filled = [key for key in viable if picks.get(key)]
+    empty = [key for key in viable if not picks.get(key)]
+    rng = _secrets.SystemRandom()
+    rng.shuffle(filled)
+    rng.shuffle(empty)
+    chosen = filled[:3]
+    if len(chosen) < 3:
+        chosen.extend(empty[: 3 - len(chosen)])
+    if len(chosen) < 3:
+        raise ValueError("Locker is not ready")
+    rng.shuffle(chosen)
+    payload = {
+        "u": int(user["id"]),
+        "n": str(user["username"]),
+        "k": chosen,
+        "h": [hash_recover_answer(key, str(picks.get(key) or "")) for key in chosen],
+        "p": 0,
+        "e": int(time.time()) + 15 * 60,
+    }
+    return {"token": sign_recover(payload), "keys": list(chosen)}
+
+
+def check_recover(token: str, guesses: dict) -> dict:
+    data = read_recover(token)
+    if not data:
+        raise ValueError("Reset is not ready")
+    keys = data.get("k") or []
+    hashes = data.get("h") or []
+    if len(keys) != 3 or len(hashes) != 3:
+        raise ValueError("Reset is not ready")
+    ok = True
+    for key, expect in zip(keys, hashes):
+        guess = str((guesses or {}).get(key) or "").strip()
+        if not hmac.compare_digest(hash_recover_answer(str(key), guess), str(expect)):
+            ok = False
+    data["p"] = 1 if ok else 0
+    data["e"] = int(time.time()) + 15 * 60
+    return {"ok": ok, "token": sign_recover(data)}
+
+
+def recover_reset_user(token: str) -> dict | None:
+    data = read_recover(token)
+    if not data or not data.get("p"):
+        return None
+    return data
+
+
 def user_from_session(token: str, now_iso: str) -> dict | None:
     if use_supabase():
         sessions = _sb_request("GET", "sessions", f"token=eq.{urllib.parse.quote(token)}&select=*")
@@ -243,6 +371,13 @@ def load_locker(user_id: int) -> tuple[dict[str, str], dict[str, dict]]:
         for row in label_rows
     }
     return picks, labels
+
+
+def empty_overwrite_blocked(user_id: int, cleaned: list[tuple[str, str]]) -> bool:
+    if cleaned:
+        return False
+    existing, _labels = load_locker(user_id)
+    return bool(existing)
 
 
 def save_locker(user_id: int, cleaned: list[tuple[str, str]], label_items: list[tuple], now: str, replace_labels: bool) -> None:
@@ -507,6 +642,74 @@ def load_crosshair(user_id: int) -> dict | None:
                 return sanitize_crosshair(json.loads(row["payload"]))
             except (TypeError, json.JSONDecodeError):
                 return None
+        finally:
+            conn.close()
+
+
+def sanitize_agent(raw: Any) -> str:
+    value = str(raw or "").strip()
+    if not value or len(value) > 64:
+        return ""
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+    if any(ch not in allowed for ch in value):
+        return ""
+    return value
+
+
+def load_agent(user_id: int) -> str:
+    if use_supabase():
+        try:
+            rows = _sb_request("GET", "avatars", f"user_id=eq.{user_id}&select=agent")
+        except ValueError:
+            return ""
+        if not rows:
+            return ""
+        return sanitize_agent(rows[0].get("agent"))
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                row = conn.execute(
+                    "SELECT agent FROM avatars WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return ""
+            return sanitize_agent(row["agent"] if row else "")
+        finally:
+            conn.close()
+
+
+def save_agent(user_id: int, raw: Any) -> None:
+    cleaned = sanitize_agent(raw)
+    if use_supabase():
+        try:
+            _sb_request("DELETE", "avatars", f"user_id=eq.{user_id}")
+            if cleaned:
+                _sb_request(
+                    "POST",
+                    "avatars",
+                    body={"user_id": user_id, "agent": cleaned},
+                    extra={"Prefer": "return=minimal"},
+                )
+        except ValueError:
+            return
+        return
+    with _db_lock:
+        conn = connect()
+        try:
+            try:
+                if not cleaned:
+                    conn.execute("DELETE FROM avatars WHERE user_id = ?", (user_id,))
+                else:
+                    conn.execute(
+                        "INSERT INTO avatars (user_id, agent) VALUES (?, ?) "
+                        "ON CONFLICT(user_id) DO UPDATE SET agent = excluded.agent",
+                        (user_id, cleaned),
+                    )
+                conn.commit()
+            except sqlite3.OperationalError:
+                return
         finally:
             conn.close()
 
