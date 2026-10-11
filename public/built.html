@@ -56,7 +56,9 @@
             position: relative;
             display: flex;
             height: var(--meta-control-h);
+            box-sizing: border-box;
             background: var(--meta-bg);
+            border: 1px solid var(--meta-border);
         }
 
         .built-view-thumb {
@@ -71,7 +73,8 @@
             transition: transform 0.32s ease;
         }
 
-        .built-view[data-on="user"] .built-view-thumb {
+        .built-view[data-on="user"] .built-view-thumb,
+        .built-view[data-on="exploded"] .built-view-thumb {
             transform: translateX(100%);
         }
 
@@ -83,7 +86,7 @@
             margin: 0;
             padding: 0 12px;
             height: 100%;
-            border: 1px solid var(--meta-border);
+            border: none;
             background: transparent;
             color: var(--meta-fg);
             font-size: var(--fs-body);
@@ -93,10 +96,6 @@
             transition: color 0.32s ease;
         }
 
-        .built-view button + button {
-            border-left: none;
-        }
-
         .built-view button.is-on {
             background: transparent;
             color: var(--table-bg);
@@ -104,7 +103,8 @@
 
         .built-view-wrap,
         .built-sort-wrap,
-        .built-refresh-wrap {
+        .built-refresh-wrap,
+        .built-bundle-wrap {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
@@ -112,31 +112,30 @@
         }
 
         .built-sort-wrap[hidden],
-        .built-refresh-wrap[hidden] {
+        .built-refresh-wrap[hidden],
+        .built-bundle-wrap[hidden] {
             display: none !important;
         }
 
         .built-view-wrap .meta-label,
         .built-sort-wrap .meta-label,
         .built-refresh-wrap .meta-label,
+        .built-bundle-wrap .meta-label,
         #built-username {
             display: block;
             min-height: calc(var(--fs-caption) * var(--lh-header));
             color: var(--page-fg);
             font-size: var(--fs-caption);
-            font-weight: var(--fw-header);
+            font-weight: var(--fw-regular);
             line-height: var(--lh-header);
-            opacity: 1;
+            opacity: 0.8;
             text-align: left;
             white-space: nowrap;
         }
 
-        .built-sort-wrap .meta-label,
-        .built-refresh-wrap .meta-label {
-            opacity: 0.85;
-        }
-
-        .built-sort-wrap select {
+        .built-sort-wrap select,
+        .built-bundle-wrap select,
+        .built-bundle-wrap input {
             margin: 0;
             box-sizing: border-box;
             width: 10em;
@@ -149,6 +148,11 @@
             font-size: var(--fs-body);
             font-family: Arial, sans-serif;
             cursor: pointer;
+        }
+
+        body.is-workshop .built-view {
+            opacity: 0.4;
+            pointer-events: none;
         }
 
         .built-add {
@@ -276,6 +280,28 @@
             min-height: 0;
             padding: 6px 10px;
             overflow: hidden;
+        }
+
+        .built-gt .gun-still {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            background: transparent;
+        }
+
+        .built-gt .gun-still-open {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+        }
+
+        body:not(.is-building):not(.is-workshop) .built-gt[data-still-src] {
+            cursor: pointer;
+        }
+
+        body.is-building .built-gt .gun-still-open,
+        body.is-workshop .built-gt .gun-still-open {
+            pointer-events: none;
         }
 
         .built-gt .gun-name,
@@ -436,6 +462,418 @@
         .built-empty {
             flex: 1 1 auto;
         }
+
+        body.is-building .built-gt:not(.is-locked) {
+            cursor: pointer;
+        }
+
+        body.is-workshop .built-board {
+            display: none;
+        }
+
+        .workshop[hidden] {
+            display: none !important;
+        }
+
+        .workshop {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: calc(100dvh - 2.75rem - 32px - var(--meta-control-h) - 60px);
+            min-height: calc(100dvh - 2.75rem - 32px - var(--meta-control-h) - 60px);
+            overflow: hidden;
+            background-color: var(--table-bg);
+            border: 1px solid var(--table-border);
+            color: var(--table-fg);
+        }
+
+        .workshop-table {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .workshop-table.is-chat-open {
+            grid-template-rows: auto minmax(0, 1fr) minmax(8rem, 0.42fr);
+        }
+
+        .workshop-bar,
+        .workshop-body,
+        .workshop-footrow {
+            grid-column: 1 / -1;
+            display: grid;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .workshop-bar {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            background-color: var(--table-header);
+        }
+
+        .workshop-body {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: minmax(0, 1fr);
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .workshop-body.is-exploded {
+            grid-template-columns: var(--ws-cols);
+            grid-template-rows: auto minmax(0, 1fr) var(--ws-chat, 3.1rem) 2.55rem;
+            transition: grid-template-columns 0.32s ease;
+        }
+
+        .workshop-body.is-resizing {
+            transition: none;
+        }
+
+        .workshop-footrow {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .workshop-footrow .workshop-cell {
+            min-height: 2.55rem;
+        }
+
+        .workshop-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            border-right: 1px solid var(--table-border);
+            border-bottom: 1px solid var(--table-border);
+        }
+
+        .workshop-cell:last-child,
+        .workshop-cell.is-end {
+            border-right: none;
+        }
+
+        .workshop-bar .workshop-cell {
+            min-height: var(--meta-control-h);
+            font-size: var(--fs-body);
+            background: var(--table-header);
+        }
+
+        .workshop-bar .workshop-cell.is-on {
+            background: var(--page-fg);
+            color: var(--table-bg);
+        }
+
+        .workshop-bar button,
+        .workshop-bar input,
+        .workshop-state button,
+        .workshop-rev button {
+            margin: 0;
+            padding: 0 8px;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            text-align: center;
+        }
+
+        .workshop-bar input {
+            width: 100%;
+            height: 100%;
+        }
+
+        .workshop-state.built-view {
+            width: 100%;
+            height: 100%;
+            min-height: var(--meta-control-h);
+            border: none;
+            background: var(--table-header);
+        }
+
+        .workshop-state .built-view-thumb {
+            background: var(--page-fg);
+        }
+
+        .workshop-state button.is-on {
+            background: transparent;
+            color: var(--table-bg);
+        }
+
+        .workshop-rev {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+        }
+
+        .workshop-rev button {
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .workshop-rev span {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .workshop-bar button {
+            cursor: pointer;
+        }
+
+        .workshop-bar input:focus {
+            outline: none;
+        }
+
+        .workshop-part {
+            min-height: var(--meta-control-h);
+            background: var(--table-header);
+            font-size: var(--fs-header-2);
+            font-weight: var(--fw-regular);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .workshop-mesh {
+            position: relative;
+            background: var(--table-bg);
+        }
+
+        .workshop-still {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .workshop-mesh.has-still .built-slash {
+            display: none;
+        }
+
+        .workshop-foot.is-generate,
+        .workshop-bar .workshop-publish {
+            padding: 0;
+        }
+
+        .workshop-generate,
+        .workshop-publish {
+            width: 100%;
+            height: 100%;
+            min-height: var(--meta-control-h);
+            margin: 0;
+            padding: 0 8px;
+            border: none;
+            border-radius: 0;
+            background: var(--table-header);
+            color: var(--table-fg);
+            font: inherit;
+            font-size: var(--fs-body);
+            cursor: pointer;
+        }
+
+        .workshop-generate:disabled,
+        .workshop-publish:disabled {
+            color: #6e6e6e;
+            cursor: default;
+        }
+
+        .workshop-toast {
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            z-index: 90;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: #222;
+            color: #fff;
+            font-size: var(--fs-caption);
+            font-weight: var(--fw-regular);
+            line-height: var(--lh-header);
+            white-space: pre-line;
+            text-align: center;
+            transform: translate(-50%, -12px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        .workshop-toast.is-on {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        .workshop-col-split {
+            position: absolute;
+            top: 0;
+            right: -3px;
+            z-index: 2;
+            width: 6px;
+            height: 100%;
+            padding: 0;
+            border: none;
+            background: transparent;
+            cursor: col-resize;
+        }
+
+        .workshop-mesh .built-slash {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .workshop-chat,
+        .workshop-refcell,
+        .workshop-foot {
+            background: var(--table-bg);
+        }
+
+        .workshop-chat {
+            position: relative;
+            align-items: stretch;
+        }
+
+        .workshop-chat textarea,
+        .workshop-foot textarea {
+            flex: 1 1 auto;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            margin: 0;
+            padding: 6px 28px 6px 8px;
+            border: none;
+            resize: none;
+            background: transparent;
+            color: var(--table-fg);
+            font: inherit;
+            font-size: var(--fs-caption);
+            line-height: 1.3;
+        }
+
+        .workshop-chat textarea:focus,
+        .workshop-foot textarea:focus {
+            outline: none;
+        }
+
+        .workshop-chat-toggle {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            z-index: 1;
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--table-fg);
+            font-size: 0.7rem;
+            line-height: 18px;
+            opacity: 0.75;
+            cursor: pointer;
+        }
+
+        .workshop-refcell,
+        .workshop-foot.is-ref {
+            justify-content: flex-start;
+            gap: 6px;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+
+        .workshop-refcell.is-drop,
+        .workshop-foot.is-ref.is-drop {
+            outline: 1px dashed var(--table-border);
+            outline-offset: -3px;
+        }
+
+        .workshop-refcell .workshop-ref-label,
+        .workshop-foot .workshop-ref-label {
+            font-size: var(--fs-caption);
+            opacity: 0.8;
+        }
+
+        .workshop-refs {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 4px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .workshop-ref {
+            position: relative;
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--table-border);
+            overflow: hidden;
+            background: var(--table-header);
+        }
+
+        .workshop-ref img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .workshop-ref button {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 12px;
+            height: 12px;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: var(--page-fg);
+            color: var(--table-bg);
+            font-size: 9px;
+            line-height: 12px;
+            cursor: pointer;
+        }
+
+        .workshop-foot.is-chat {
+            justify-content: stretch;
+            grid-column: span 2;
+        }
+
+        .workshop-foot.is-chat textarea {
+            padding: 6px 8px;
+        }
+
+        .workshop-body .workshop-chat textarea {
+            overflow: hidden;
+            transition: min-height 0.24s ease, padding 0.24s ease;
+        }
+
+        .workshop-body .workshop-chat.is-focus {
+            z-index: 4;
+            overflow: visible;
+        }
+
+        .workshop-body .workshop-chat.is-focus textarea {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 4;
+            min-height: 7.5rem;
+            background: var(--table-bg);
+            border: 1px solid var(--table-border);
+        }
     </style>
 </head>
 <body>
@@ -588,17 +1026,27 @@
                             <option value="random">Randomized</option>
                         </select>
                     </label>
+                    <label class="built-bundle-wrap" id="built-bundle-wrap" hidden>
+                        <span class="meta-label">Bundle</span>
+                        <select id="built-bundle" aria-label="Concept bundle"></select>
+                        <input id="built-bundle-name" type="text" maxlength="32" spellcheck="false" hidden placeholder="New bundle">
+                    </label>
                 </div>
                 <button type="button" class="built-add" id="built-add" aria-label="Build more" aria-pressed="false">+</button>
             </div>
             <div class="built-board" id="built-board"></div>
+            <div class="workshop" id="workshop" hidden>
+                <div class="workshop-table" id="workshop-table"></div>
+                <input id="workshop-file" type="file" accept="image/*" multiple hidden>
+            </div>
         </div>
     </div>
     <div id="crosshair-hud" class="crosshair-hud" hidden></div>
+    <div id="workshop-toast" class="workshop-toast" hidden></div>
     <script src="./theme.js"></script>
     <script src="./profile.js?v=pfp4"></script>
     <script src="./crosshair.js"></script>
-    <script src="./built.js?v=bp4"></script>
+    <script src="./built.js?v=ws12"></script>
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
     </script>

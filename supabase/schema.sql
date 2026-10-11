@@ -47,5 +47,34 @@ create table if not exists avatars (
   agent text not null
 );
 
-revoke all on table users, sessions, picks, labels, layouts, crosshairs, avatars from anon, authenticated;
-grant all on table users, sessions, picks, labels, layouts, crosshairs, avatars to service_role;
+create table if not exists generate_log (
+  user_id bigint not null references users (id) on delete cascade,
+  day date not null,
+  count integer not null default 0,
+  primary key (user_id, day)
+);
+
+create table if not exists workshop_commits (
+  id text primary key,
+  user_id bigint not null references users (id) on delete cascade,
+  weapon text not null,
+  parent_id text,
+  name text not null default '',
+  notes text not null default '',
+  prompt text not null default '',
+  still_path text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists workshop_publishes (
+  user_id bigint not null references users (id) on delete cascade,
+  weapon text not null,
+  commit_id text not null,
+  still_path text not null default '',
+  username text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (user_id, weapon, commit_id)
+);
+
+revoke all on table users, sessions, picks, labels, layouts, crosshairs, avatars, generate_log, workshop_commits, workshop_publishes from anon, authenticated;
+grant all on table users, sessions, picks, labels, layouts, crosshairs, avatars, generate_log, workshop_commits, workshop_publishes to service_role;

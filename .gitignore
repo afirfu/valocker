@@ -6,5 +6,6 @@ __pycache__/
 icons-preview/
 .vercel
 .venv/
+data/stills/
 
 .vercel

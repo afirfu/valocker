@@ -714,6 +714,149 @@ def save_agent(user_id: int, raw: Any) -> None:
             conn.close()
 
 
+def _utc_day() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def ensure_generate_log_sqlite() -> None:
+    with _db_lock:
+        conn = connect()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS generate_log (
+                    user_id INTEGER NOT NULL,
+                    day TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (user_id, day)
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _sb_generate_count(user_id: int, day: str) -> int | None:
+    rows = _sb_request("GET", "generate_log", f"user_id=eq.{user_id}&day=eq.{day}&select=count")
+    if not rows:
+        return 0
+    return int(rows[0].get("count") or 0)
+
+
+def _sqlite_generate_count(user_id: int, day: str) -> int:
+    ensure_generate_log_sqlite()
+    with _db_lock:
+        conn = connect()
+        try:
+            row = conn.execute(
+                "SELECT count FROM generate_log WHERE user_id = ? AND day = ?",
+                (user_id, day),
+            ).fetchone()
+            return int(row["count"]) if row else 0
+        finally:
+            conn.close()
+
+
+def generate_usage(user_id: int) -> int:
+    day = _utc_day()
+    if use_supabase():
+        try:
+            used = _sb_generate_count(user_id, day)
+            if used is not None:
+                return used
+        except ValueError:
+            pass
+    return _sqlite_generate_count(user_id, day)
+
+
+def reserve_generate(user_id: int, cap: int) -> tuple[int, int]:
+    day = _utc_day()
+    if use_supabase():
+        try:
+            used = _sb_generate_count(user_id, day) or 0
+            if used >= cap:
+                raise ValueError(f"Daily generate cap reached ({cap})")
+            nxt = used + 1
+            if used == 0:
+                _sb_request(
+                    "POST",
+                    "generate_log",
+                    body={"user_id": user_id, "day": day, "count": nxt},
+                    extra={"Prefer": "return=minimal"},
+                )
+            else:
+                _sb_request(
+                    "PATCH",
+                    "generate_log",
+                    f"user_id=eq.{user_id}&day=eq.{day}",
+                    body={"count": nxt},
+                    extra={"Prefer": "return=minimal"},
+                )
+            return nxt, cap
+        except ValueError as error:
+            if "Daily generate cap" in str(error):
+                raise
+            pass
+    ensure_generate_log_sqlite()
+    with _db_lock:
+        conn = connect()
+        try:
+            row = conn.execute(
+                "SELECT count FROM generate_log WHERE user_id = ? AND day = ?",
+                (user_id, day),
+            ).fetchone()
+            used = int(row["count"]) if row else 0
+            if used >= cap:
+                raise ValueError(f"Daily generate cap reached ({cap})")
+            nxt = used + 1
+            conn.execute(
+                """
+                INSERT INTO generate_log (user_id, day, count) VALUES (?, ?, ?)
+                ON CONFLICT(user_id, day) DO UPDATE SET count = excluded.count
+                """,
+                (user_id, day, nxt),
+            )
+            conn.commit()
+            return nxt, cap
+        finally:
+            conn.close()
+
+
+def refund_generate(user_id: int) -> None:
+    day = _utc_day()
+    if use_supabase():
+        try:
+            used = _sb_generate_count(user_id, day) or 0
+            if used <= 0:
+                return
+            _sb_request(
+                "PATCH",
+                "generate_log",
+                f"user_id=eq.{user_id}&day=eq.{day}",
+                body={"count": used - 1},
+                extra={"Prefer": "return=minimal"},
+            )
+            return
+        except ValueError:
+            pass
+    ensure_generate_log_sqlite()
+    with _db_lock:
+        conn = connect()
+        try:
+            conn.execute(
+                """
+                UPDATE generate_log
+                SET count = CASE WHEN count > 0 THEN count - 1 ELSE 0 END
+                WHERE user_id = ? AND day = ?
+                """,
+                (user_id, day),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def save_crosshair(user_id: int, payload: dict | None) -> None:
     cleaned = sanitize_crosshair(payload)
     if use_supabase():

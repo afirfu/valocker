@@ -10,9 +10,12 @@ from io import BytesIO
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from export_docx import build_locker_docx, sanitize_groups
+from generate import GenerateError, generate_status, run_generate
+from workshop_vault import latest_bundle_still, list_bundles, list_commits, list_publishes, publish_commit, read_local_still, save_commit
 from kill_audio import resolve_kill_audio
 from server import (
     COOKIE_NAME,
+    OWNER_USERNAME,
     ROOT,
     SESSION_DAYS,
     create_session_token,
@@ -243,6 +246,98 @@ def api_recover_reset():
     salt, digest = hash_password(password)
     update_password(int(data["u"]), salt, digest)
     return jsonify({"ok": True})
+
+
+def require_owner():
+    user = current_user()
+    if not user:
+        return None, (jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED)
+    if str(user["username"]).strip().lower() != OWNER_USERNAME:
+        return None, (jsonify({"error": "Owner only"}), HTTPStatus.FORBIDDEN)
+    return user, None
+
+
+@app.get("/api/generate")
+def api_generate_status():
+    user, error = require_owner()
+    if error:
+        return error
+    return jsonify(generate_status(int(user["id"])))
+
+
+@app.post("/api/generate")
+def api_generate():
+    user, error = require_owner()
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        result = run_generate(int(user["id"]), body)
+        commit = save_commit(
+            int(user["id"]),
+            str(body.get("weapon") or ""),
+            str(body.get("name") or ""),
+            str((body.get("concept") or {}).get("text") or ""),
+            str(result.get("prompt") or ""),
+            str(result.get("src") or ""),
+            str(body.get("parent_id") or ""),
+        )
+        result["commit"] = commit
+        result["src"] = commit["src"] or result.get("src")
+        return jsonify(result)
+    except GenerateError as err:
+        return jsonify({"error": str(err)}), err.status
+    except ValueError as err:
+        return jsonify({"error": str(err)}), HTTPStatus.BAD_REQUEST
+
+
+@app.get("/api/workshop/commits")
+def api_workshop_commits():
+    user, error = require_owner()
+    if error:
+        return error
+    user_id = int(user["id"])
+    weapon = request.args.get("weapon") or ""
+    bundle = request.args.get("bundle") or ""
+    commits = list_commits(user_id, weapon, bundle)
+    return jsonify({
+        "commits": commits,
+        "bundles": list_bundles(user_id),
+        "bundle_src": "" if commits else latest_bundle_still(user_id, bundle, weapon),
+    })
+
+
+@app.post("/api/workshop/publish")
+def api_workshop_publish():
+    user, error = require_owner()
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(
+            publish_commit(
+                int(user["id"]),
+                str(body.get("weapon") or ""),
+                str(body.get("commit_id") or ""),
+                str(user["username"] or ""),
+            )
+        )
+    except ValueError as err:
+        return jsonify({"error": str(err)}), HTTPStatus.BAD_REQUEST
+
+
+@app.get("/api/explore")
+def api_explore():
+    return jsonify({"publishes": list_publishes()})
+
+
+@app.get("/api/workshop/still/<commit_id>")
+def api_workshop_still(commit_id: str):
+    found = read_local_still(commit_id)
+    if not found:
+        return jsonify({"error": "Still is gone"}), HTTPStatus.NOT_FOUND
+    payload, ctype = found
+    return Response(payload, mimetype=ctype, headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.post("/api/logout")

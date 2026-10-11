@@ -16,7 +16,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from export_docx import build_locker_docx, sanitize_groups
+from generate import GenerateError, generate_status, run_generate
 from kill_audio import resolve_kill_audio
+from workshop_vault import (
+    latest_bundle_still,
+    list_bundles,
+    list_commits,
+    list_publishes,
+    publish_commit,
+    read_local_still,
+    save_commit,
+)
 from store import (
     _db_lock,
     check_recover,
@@ -133,6 +143,36 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             user_id INTEGER PRIMARY KEY,
             agent TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS generate_log (
+            user_id INTEGER NOT NULL,
+            day TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, day),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS workshop_commits (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            weapon TEXT NOT NULL,
+            parent_id TEXT,
+            name TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            still_path TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS workshop_publishes (
+            user_id INTEGER NOT NULL,
+            weapon TEXT NOT NULL,
+            commit_id TEXT NOT NULL,
+            still_path TEXT NOT NULL DEFAULT '',
+            username TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, weapon, commit_id)
         );
         """
     )
@@ -380,6 +420,18 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             family = (qs.get("family") or [""])[0]
             self.send_json({"urls": resolve_kill_audio(family)})
             return
+        if parsed.path == "/api/generate":
+            self.handle_generate_status()
+            return
+        if parsed.path == "/api/workshop/commits":
+            self.handle_workshop_commits()
+            return
+        if parsed.path == "/api/explore":
+            self.send_json({"publishes": list_publishes()})
+            return
+        if parsed.path.startswith("/api/workshop/still/"):
+            self.handle_workshop_still(parsed.path.rsplit("/", 1)[-1])
+            return
         super().do_GET()
 
     def do_POST(self) -> None:
@@ -395,6 +447,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             "/api/recover/start": self.handle_recover_start,
             "/api/recover/check": self.handle_recover_check,
             "/api/recover/reset": self.handle_recover_reset,
+            "/api/generate": self.handle_generate,
+            "/api/workshop/publish": self.handle_workshop_publish,
         }
         handler = routes.get(parsed.path)
         if not handler:
@@ -402,6 +456,8 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
             return
         try:
             handler()
+        except GenerateError as error:
+            self.send_json({"error": str(error)}, error.status)
         except ValueError as error:
             self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
         except json.JSONDecodeError:
@@ -481,6 +537,85 @@ class VaLockerHandler(SimpleHTTPRequestHandler):
         salt, digest = hash_password(password)
         update_password(int(data["u"]), salt, digest)
         self.send_json({"ok": True})
+
+    def require_owner(self):
+        user = self.current_user()
+        if not user:
+            self.send_json({"error": "Not logged in"}, HTTPStatus.UNAUTHORIZED)
+            return None
+        if str(user["username"]).strip().lower() != OWNER_USERNAME:
+            self.send_json({"error": "Owner only"}, HTTPStatus.FORBIDDEN)
+            return None
+        return user
+
+    def handle_generate_status(self) -> None:
+        user = self.require_owner()
+        if not user:
+            return
+        self.send_json(generate_status(int(user["id"])))
+
+    def handle_generate(self) -> None:
+        user = self.require_owner()
+        if not user:
+            return
+        body = self.read_json()
+        result = run_generate(int(user["id"]), body)
+        commit = save_commit(
+            int(user["id"]),
+            str(body.get("weapon") or ""),
+            str(body.get("name") or ""),
+            str((body.get("concept") or {}).get("text") or ""),
+            str(result.get("prompt") or ""),
+            str(result.get("src") or ""),
+            str(body.get("parent_id") or ""),
+        )
+        result["commit"] = commit
+        result["src"] = commit["src"] or result.get("src")
+        self.send_json(result)
+
+    def handle_workshop_commits(self) -> None:
+        user = self.require_owner()
+        if not user:
+            return
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        weapon = (qs.get("weapon") or [""])[0]
+        bundle = (qs.get("bundle") or [""])[0]
+        user_id = int(user["id"])
+        commits = list_commits(user_id, weapon, bundle)
+        self.send_json({
+            "commits": commits,
+            "bundles": list_bundles(user_id),
+            "bundle_src": "" if commits else latest_bundle_still(user_id, bundle, weapon),
+        })
+
+    def handle_workshop_publish(self) -> None:
+        user = self.require_owner()
+        if not user:
+            return
+        body = self.read_json()
+        self.send_json(
+            publish_commit(
+                int(user["id"]),
+                str(body.get("weapon") or ""),
+                str(body.get("commit_id") or ""),
+                str(user["username"] or ""),
+            )
+        )
+
+    def handle_workshop_still(self, commit_id: str) -> None:
+        found = read_local_still(commit_id)
+        if not found:
+            self.send_json({"error": "Still is gone"}, HTTPStatus.NOT_FOUND)
+            return
+        payload, ctype = found
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.apply_cors()
+        self.end_headers()
+        self.wfile.write(payload)
 
     def handle_logout(self) -> None:
         token = self.current_token()
